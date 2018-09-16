@@ -1,0 +1,9 @@
+[package]
+name = "j2534"
+version = "0.1.0"
+authors = ["Altenius <jacobjm18@gmail.com>"]
+
+[dependencies]
+winreg = "0.5"
+libloading = "0.5"
+libc = "0.2"
