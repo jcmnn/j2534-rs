@@ -219,6 +219,7 @@ pub struct VersionInfo {
 }
 
 impl<'a> Device<'a> {
+    /// See `Device::connect`
     pub fn connect_raw(&self, protocol: u32, flags: u32, baudrate: u32) -> Result<Channel> {
         let mut id: u32 = 0;
         let res = unsafe { j2534_PassThruConnect(self.interface.handle, self.id, protocol, flags, baudrate, &mut id as *mut libc::uint32_t) };
@@ -231,10 +232,18 @@ impl<'a> Device<'a> {
         })
     }
 
+    /// Creates a channel
+    /// 
+    /// # Arguments
+    /// 
+    /// * protocol - Protocol to use with the channel
+    /// * flags - Protocol-specific flags. This is usually set to zero
+    /// * baudrate - Initial baud rate for the channel
     pub fn connect(&self, protocol: Protocol, flags: ConnectFlags, baudrate: u32) -> Result<Channel> {
         self.connect_raw(protocol as u32, flags.bits(), baudrate)
     }
 
+    /// Reads the version info of the device
     pub fn read_version(&self) -> Result<VersionInfo> {
         let mut firmware_version: [u8; 80] = [0; 80];
         let mut dll_version: [u8; 80] = [0; 80];
