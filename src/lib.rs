@@ -195,6 +195,17 @@ impl Interface {
 
         Ok(Device {interface: self, id})
     }
+
+    /// Returns a text description of the most recent error
+    pub fn get_last_error(&self) -> Result<String> {
+        let mut error: [u8; 80] = [0; 80];
+        let res = unsafe { j2534_PassThruGetLastError(self.handle, error.as_mut_ptr() as *mut libc::c_char) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        
+        unsafe { Ok(String::from(ffi::CStr::from_ptr(error.as_mut_ptr() as *mut libc::c_char).to_str()?)) }
+    }
 }
 
 impl Drop for Interface {
