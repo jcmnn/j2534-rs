@@ -2,6 +2,7 @@
 name = "j2534"
 version = "0.1.0"
 authors = ["Altenius <jacobjm18@gmail.com>"]
+build = "build.rs"
 
 [dependencies]
 winreg = "0.5"
