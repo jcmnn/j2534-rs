@@ -82,7 +82,7 @@ extern "C" void *j2534_load(const char *path) {
         return nullptr;
     if (!(lib->PassThruReadMsgs = reinterpret_cast<PassThruReadMsgs_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruReadMsgs"))))
         return nullptr;
-    if (!(lib->PassThruStartMsgFilter = reinterpret_cast<PassThruStartMsgFilter_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruStartmsgFilter"))))
+    if (!(lib->PassThruStartMsgFilter = reinterpret_cast<PassThruStartMsgFilter_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruStartMsgFilter"))))
         return nullptr;
     if (!(lib->PassThruStopMsgFilter = reinterpret_cast<PassThruStopMsgFilter_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruStopMsgFilter"))))
         return nullptr;
