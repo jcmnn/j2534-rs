@@ -342,6 +342,19 @@ impl<'a> Channel<'a> {
         }
         Ok(msg_id)
     }
+
+    /// Removes a message filter started with `Channel::start_msg_filter`
+    /// 
+    /// # Arguments
+    /// 
+    /// * `msg_id` - The id of the message returned from `Channel::start_msg_filter`
+    pub fn stop_msg_filter(&self, msg_id: u32) -> Result<()> {
+        let res = unsafe { j2534_PassThruStopMsgFilter(self.device.interface.handle, self.id, msg_id) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(())
+    }
 }
 
 impl<'a> Drop for Channel<'a> {
