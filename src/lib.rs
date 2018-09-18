@@ -313,6 +313,24 @@ impl<'a> Channel<'a> {
         Ok(&msgs[..(num_msgs as usize)])
     }
 
+    /// Writes `msgs` to the device until all messages have been written or until the timeout has been reached. Returns the amount of message written.
+    /// 
+    /// # Arguments
+    /// 
+    /// * msgs - The array of messages to send.
+    /// * timeout - The amount of time in milliseconds to wait. If set to zero, queues as many messages as possible and returns immediately.
+    pub fn write_msgs<'b>(&self, msgs: &'b mut [PassThruMsg], timeout: u32) -> Result<usize> {
+        for msg in msgs.iter_mut() {
+            msg.protocol_id = self.protocol_id;
+        }
+        let mut num_msgs: u32 = msgs.len() as u32;
+        let res = unsafe { j2534_PassThruWriteMsgs(self.device.interface.handle, self.id, msgs.as_mut_ptr(), &mut num_msgs as *mut libc::uint32_t, timeout) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(num_msgs as usize)
+    }
+
     /// Sets up a network protocol filter to filter messages received by the PassThru device. There is a limit of ten filters per network layer protocol.
     /// The device blocks all receive frames by default when no filters are defined.
     /// http://www.drewtech.com/support/passthru/startmsgfilter.html
