@@ -351,7 +351,7 @@ impl<'a> Channel<'a> {
     /// 
     /// * msgs - The array of messages to send.
     /// * timeout - The amount of time in milliseconds to wait. If set to zero, queues as many messages as possible and returns immediately.
-    pub fn write_msgs<'b>(&self, msgs: &'b mut [PassThruMsg], timeout: u32) -> Result<usize> {
+    pub fn write_msgs(&self, msgs: &mut [PassThruMsg], timeout: u32) -> Result<usize> {
         for msg in msgs.iter_mut() {
             msg.protocol_id = self.protocol_id;
         }
