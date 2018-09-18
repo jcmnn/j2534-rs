@@ -256,6 +256,9 @@ pub struct VersionInfo {
     pub api_version: String,
 }
 
+pub const SHORT_TO_GROUND: u32= 0xFFFFFFFE;
+pub const VOLTAGE_OFF: u32 = 0xFFFFFFFF;
+
 impl<'a> Device<'a> {
     /// See `Device::connect`
     pub fn connect_raw(&self, protocol: u32, flags: u32, baudrate: u32) -> Result<Channel> {
@@ -298,6 +301,22 @@ impl<'a> Device<'a> {
                 dll_version: String::from(ffi::CStr::from_ptr(dll_version.as_mut_ptr() as *mut libc::c_char).to_str()?),
             })
         }
+    }
+
+    /// Outputs a programmable voltage on the specified J1962 connector pin.
+    /// Only one pin can have a specified voltage applied at a time. The only exception: it is permissible to program pin 15 for SHORT_TO_GROUND, and another pin to a voltage level.
+    /// When switching pins, the user application must disable the first voltage (VOLTAGE_OFF option) before enabling the second. 
+    /// 
+    /// # Arguments
+    /// 
+    /// * `pin_number` - The J1962 connector pin to which the PassThru device will apply the specified voltage
+    /// * `voltage` - The voltage value (in millivolts) that will be applied to the specified pin
+    pub fn set_programming_voltage(&self, pin_number: u32, voltage: u32) -> Result<()> {
+        let res = unsafe { j2534_PassThruSetProgrammingVoltage(self.interface.handle, self.id, pin_number, voltage) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(())
     }
 }
 
