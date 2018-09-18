@@ -90,6 +90,7 @@ extern {
 
 // Much of the descriptions and APIs used here were taken from http://www.drewtech.com/support/passthru.html
 
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub struct PassThruMsg {
     pub protocol_id: u32,
@@ -99,6 +100,27 @@ pub struct PassThruMsg {
     pub data_size: u32,
     pub extra_data_index: u32,
     pub data: [u8; 4128],
+}
+
+impl PassThruMsg {
+    pub fn new_raw(protocol: Protocol, rx_status: u32, tx_flags: u32, timestamp: u32, data_size: u32, extra_data_index: u32, data: [u8; 4128]) -> PassThruMsg {
+        PassThruMsg {
+            protocol_id: protocol as u32,
+            rx_status,
+            tx_flags,
+            timestamp,
+            data_size,
+            extra_data_index,
+            data,
+        }
+    }
+
+    pub fn new(protocol: Protocol, rx_status: u32, tx_flags: u32, timestamp: u32, data_size: u32, extra_data_index: u32, data: &[u8]) -> PassThruMsg {
+        PassThruMsg::new_raw(protocol, rx_status, tx_flags, timestamp, data.len() as u32, extra_data_index, {
+                let mut d: [u8; 4128] = [0; 4128];
+                d[..data.len()].copy_from_slice(&data);
+                d })
+    }
 }
 
 impl Default for PassThruMsg {
@@ -216,6 +238,7 @@ impl Drop for Interface {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum Protocol {
     J1850VPW = 1,
     J1850PWM = 2,
@@ -239,6 +262,7 @@ bitflags! {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum FilterType {
     /// Allows matching messages into the receive queue. This filter type is only valid on non-ISO 15765 channels
     Pass = 1,
@@ -345,6 +369,21 @@ impl<'a> Channel<'a> {
         Ok(&msgs[..(num_msgs as usize)])
     }
 
+    /// Reads a single message
+    pub fn read_msg(&self, timeout: u32) -> Result<PassThruMsg> {
+        let mut msg = PassThruMsg {
+            protocol_id: self.protocol_id,
+            ..Default::default()
+        };
+
+        let mut num_msgs = 1 as u32;
+        let res = unsafe { j2534_PassThruReadMsgs(self.device.interface.handle, self.id, &mut msg as *mut PassThruMsg, &mut num_msgs as *mut libc::uint32_t, timeout) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(msg)
+    }
+
     /// Writes `msgs` to the device until all messages have been written or until the timeout has been reached. Returns the amount of message written.
     /// 
     /// # Arguments
@@ -366,9 +405,25 @@ impl<'a> Channel<'a> {
     /// Sets up a network protocol filter to filter messages received by the PassThru device. There is a limit of ten filters per network layer protocol.
     /// The device blocks all receive frames by default when no filters are defined.
     /// http://www.drewtech.com/support/passthru/startmsgfilter.html
-    pub fn start_msg_filter(&self, filter_type: FilterType, mask_msg: &PassThruMsg, pattern_msg: &PassThruMsg, flow_control_msg: &PassThruMsg) -> Result<u32> {
+    pub fn start_msg_filter(&self, filter_type: FilterType, mask_msg: Option<&PassThruMsg>, pattern_msg: Option<&PassThruMsg>, flow_control_msg: Option<&PassThruMsg>) -> Result<u32> {
         let mut msg_id: u32 = 0;
-        let res = unsafe { j2534_PassThruStartMsgFilter(self.device.interface.handle, self.id, filter_type as u32, mask_msg as *const PassThruMsg, pattern_msg as *const PassThruMsg, flow_control_msg as *const PassThruMsg, &mut msg_id as *mut libc::uint32_t) };
+
+        let mask_ptr = match mask_msg {
+            Some(msg) => msg as *const PassThruMsg,
+            None => std::ptr::null() as *const PassThruMsg,
+        };
+
+        let pattern_ptr = match pattern_msg {
+            Some(msg) => msg as *const PassThruMsg,
+            None => std::ptr::null() as *const PassThruMsg,
+        };
+
+        let flow_control_ptr = match flow_control_msg {
+            Some(msg) => msg as *const PassThruMsg,
+            None => std::ptr::null() as *const PassThruMsg,
+        };
+
+        let res = unsafe { j2534_PassThruStartMsgFilter(self.device.interface.handle, self.id, filter_type as u32, mask_ptr, pattern_ptr, flow_control_ptr, &mut msg_id as *mut libc::uint32_t) };
         if res != 0 {
             return Err(Error::from_code(res));
         }
