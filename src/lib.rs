@@ -80,7 +80,7 @@ extern {
     fn j2534_PassThruWriteMsgs(handle: *const libc::c_void, channel_id: libc::uint32_t, msgs: *mut PassThruMsg, num_msgs: *mut libc::uint32_t, timeout: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStartPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg: *mut PassThruMsg, msg_id: *mut libc::uint32_t, time_interval: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStopPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg_id: libc::uint32_t) -> libc::int32_t;
-    fn j2534_PassThruStartMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_type: libc::uint32_t, msg_mask: *mut PassThruMsg, pattern_msg: *mut PassThruMsg, flow_control_msg: *mut PassThruMsg, filter_id: *mut libc::uint32_t) -> libc::int32_t;
+    fn j2534_PassThruStartMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_type: libc::uint32_t, msg_mask: *const PassThruMsg, pattern_msg: *const PassThruMsg, flow_control_msg: *const PassThruMsg, filter_id: *mut libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStopMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_id: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruSetProgrammingVoltage(handle: *const libc::c_void, device_id: libc::uint32_t, pin_number: libc::uint32_t, voltage: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruReadVersion(handle: *const libc::c_void, device_id: libc::uint32_t, firmware_version: *mut libc::c_char, dll_version: *mut libc::c_char, api_version: *mut libc::c_char) -> libc::int32_t;
@@ -226,6 +226,16 @@ bitflags! {
     }
 }
 
+pub enum FilterType {
+    /// Allows matching messages into the receive queue. This filter type is only valid on non-ISO 15765 channels
+    Pass = 1,
+    /// Keeps matching messages out of the receive queue. This filter type is only valid on non-ISO 15765 channels
+    Block = 2,
+    /// Allows matching messages into the receive queue and defines an outgoing flow control message to support
+    /// the ISO 15765-2 flow control mechanism. This filter type is only valid on ISO 15765 channels.
+    FlowControl = 3,
+}
+
 #[derive(Debug)]
 pub struct VersionInfo {
     pub firmware_version: String,
@@ -301,6 +311,18 @@ impl<'a> Channel<'a> {
             return Err(Error::from_code(res));
         }
         Ok(&msgs[..(num_msgs as usize)])
+    }
+
+    /// Sets up a network protocol filter to filter messages received by the PassThru device. There is a limit of ten filters per network layer protocol.
+    /// The device blocks all receive frames by default when no filters are defined.
+    /// http://www.drewtech.com/support/passthru/startmsgfilter.html
+    pub fn start_msg_filter(&self, filter_type: FilterType, mask_msg: &PassThruMsg, pattern_msg: &PassThruMsg, flow_control_msg: &PassThruMsg) -> Result<u32> {
+        let mut msg_id: u32 = 0;
+        let res = unsafe { j2534_PassThruStartMsgFilter(self.device.interface.handle, self.id, filter_type as u32, mask_msg as *const PassThruMsg, pattern_msg as *const PassThruMsg, flow_control_msg as *const PassThruMsg, &mut msg_id as *mut libc::uint32_t) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(msg_id)
     }
 }
 
