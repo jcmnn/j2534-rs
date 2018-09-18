@@ -295,7 +295,7 @@ impl<'a> Channel<'a> {
         for msg in msgs.iter_mut() {
             msg.protocol_id = self.protocol_id;
         }
-        let mut num_msgs: u32 = 0;
+        let mut num_msgs: u32 = msgs.len() as u32;
         let res = unsafe { j2534_PassThruReadMsgs(self.device.interface.handle, self.id, msgs.as_mut_ptr(), &mut num_msgs as *mut libc::uint32_t, timeout) };
         if res != 0 {
             return Err(Error::from_code(res));
