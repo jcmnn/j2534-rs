@@ -46,7 +46,7 @@ impl Error {
 }
 
 impl From<Utf8Error> for Error {
-    fn from(err: Utf8Error) -> Self {
+    fn from(_err: Utf8Error) -> Self {
         Error {
             kind: ErrorKind::Utf8,
         }
@@ -76,11 +76,11 @@ extern {
     fn j2534_PassThruOpen(handle: *const libc::c_void, port: *const libc::c_char, device_id: *mut libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruConnect(handle: *const libc::c_void, device_id: libc::uint32_t, protocol_id: libc::uint32_t, flags: libc::uint32_t, baudrate: libc::uint32_t, channel_id: *mut libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruDisconnect(handle: *const libc::c_void, channel_id: libc::uint32_t) -> libc::int32_t;
-    fn j2534_PassThruReadMsgs(handle: *const libc::c_void, channel_id: libc::uint32_t, num_msgs: *mut libc::uint32_t, timeout: libc::uint32_t) -> libc::int32_t;
-    fn j2534_PassThruWriteMsgs(handle: *const libc::c_void, channel_id: libc::uint32_t, num_msgs: *mut libc::uint32_t, timeout: libc::uint32_t) -> libc::int32_t;
-    fn j2534_PassThruStartPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg: *mut PassthruMsg, msg_id: *mut libc::uint32_t, time_interval: libc::uint32_t) -> libc::int32_t;
+    fn j2534_PassThruReadMsgs(handle: *const libc::c_void, channel_id: libc::uint32_t, msgs: *mut PassThruMsg, num_msgs: *mut libc::uint32_t, timeout: libc::uint32_t) -> libc::int32_t;
+    fn j2534_PassThruWriteMsgs(handle: *const libc::c_void, channel_id: libc::uint32_t, msgs: *mut PassThruMsg, num_msgs: *mut libc::uint32_t, timeout: libc::uint32_t) -> libc::int32_t;
+    fn j2534_PassThruStartPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg: *mut PassThruMsg, msg_id: *mut libc::uint32_t, time_interval: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStopPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg_id: libc::uint32_t) -> libc::int32_t;
-    fn j2534_PassThruStartMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_type: libc::uint32_t, msg_mask: *mut PassthruMsg, pattern_msg: *mut PassthruMsg, flow_control_msg: *mut PassthruMsg, filter_id: *mut libc::uint32_t) -> libc::int32_t;
+    fn j2534_PassThruStartMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_type: libc::uint32_t, msg_mask: *mut PassThruMsg, pattern_msg: *mut PassThruMsg, flow_control_msg: *mut PassThruMsg, filter_id: *mut libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStopMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_id: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruSetProgrammingVoltage(handle: *const libc::c_void, device_id: libc::uint32_t, pin_number: libc::uint32_t, voltage: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruReadVersion(handle: *const libc::c_void, device_id: libc::uint32_t, firmware_version: *mut libc::c_char, dll_version: *mut libc::c_char, api_version: *mut libc::c_char) -> libc::int32_t;
@@ -89,7 +89,7 @@ extern {
 }
 
 #[repr(C)]
-pub struct PassthruMsg {
+pub struct PassThruMsg {
     pub protocol_id: u32,
     pub rx_status: u32,
     pub tx_flags: u32,
@@ -97,6 +97,20 @@ pub struct PassthruMsg {
     pub data_size: u32,
     pub extra_data_index: u32,
     pub data: [u8; 4128],
+}
+
+impl Default for PassThruMsg {
+    fn default() -> PassThruMsg {
+        PassThruMsg {
+            protocol_id: 0,
+            rx_status: 0,
+            tx_flags: 0,
+            timestamp: 0,
+            data_size: 0,
+            extra_data_index: 0,
+            data: [0; 4128],
+        }
+    }
 }
 
 /// Represents a J2534 library
@@ -114,6 +128,7 @@ pub struct Device<'a> {
 pub struct Channel<'a> {
     device: &'a Device<'a>,
     id: u32,
+    protocol_id: u32,
 }
 
 impl Interface {
@@ -228,7 +243,8 @@ impl<'a> Device<'a> {
         }
         Ok(Channel {
             device: self,
-            id
+            id,
+            protocol_id: protocol,
         })
     }
 
@@ -269,7 +285,23 @@ impl<'a> Drop for Device<'a> {
 }
 
 impl<'a> Channel<'a> {
-    
+    /// Fills `msgs` with messages until timing out or until `msgs` is filled. Returns the slice of messages read.
+    /// 
+    /// # Arguments
+    /// 
+    /// * msgs - The array of messages to fill.
+    /// * timeout - The amount of time in milliseconds to wait. If set to zero, reads buffered messages and returns immediately
+    pub fn read_msgs<'b>(&self, msgs: &'b mut [PassThruMsg], timeout: u32) -> Result<&'b [PassThruMsg]> {
+        for msg in msgs.iter_mut() {
+            msg.protocol_id = self.protocol_id;
+        }
+        let mut num_msgs: u32 = 0;
+        let res = unsafe { j2534_PassThruReadMsgs(self.device.interface.handle, self.id, msgs.as_mut_ptr(), &mut num_msgs as *mut libc::uint32_t, timeout) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(&msgs[..(num_msgs as usize)])
+    }
 }
 
 impl<'a> Drop for Channel<'a> {
