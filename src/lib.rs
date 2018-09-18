@@ -78,7 +78,7 @@ extern {
     fn j2534_PassThruDisconnect(handle: *const libc::c_void, channel_id: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruReadMsgs(handle: *const libc::c_void, channel_id: libc::uint32_t, msgs: *mut PassThruMsg, num_msgs: *mut libc::uint32_t, timeout: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruWriteMsgs(handle: *const libc::c_void, channel_id: libc::uint32_t, msgs: *mut PassThruMsg, num_msgs: *mut libc::uint32_t, timeout: libc::uint32_t) -> libc::int32_t;
-    fn j2534_PassThruStartPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg: *mut PassThruMsg, msg_id: *mut libc::uint32_t, time_interval: libc::uint32_t) -> libc::int32_t;
+    fn j2534_PassThruStartPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg: *const PassThruMsg, msg_id: *mut libc::uint32_t, time_interval: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStopPeriodicMsg(handle: *const libc::c_void, channel_id: libc::uint32_t, msg_id: libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStartMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_type: libc::uint32_t, msg_mask: *const PassThruMsg, pattern_msg: *const PassThruMsg, flow_control_msg: *const PassThruMsg, filter_id: *mut libc::uint32_t) -> libc::int32_t;
     fn j2534_PassThruStopMsgFilter(handle: *const libc::c_void, channel_id: libc::uint32_t, filter_id: libc::uint32_t) -> libc::int32_t;
@@ -87,6 +87,8 @@ extern {
     fn j2534_PassThruGetLastError(handle: *const libc::c_void, error_description: *mut libc::c_char) -> libc::int32_t;
     fn j2534_PassThruIoctl(handle: *const libc::c_void, handle_id: libc::uint32_t, ioctl_id: libc::uint32_t, input: *mut libc::c_void, output: *mut libc::c_void) -> libc::int32_t;
 }
+
+// Much of the descriptions and APIs used here were taken from http://www.drewtech.com/support/passthru.html
 
 #[repr(C)]
 pub struct PassThruMsg {
@@ -361,6 +363,35 @@ impl<'a> Channel<'a> {
     /// * `msg_id` - The id of the message returned from `Channel::start_msg_filter`
     pub fn stop_msg_filter(&self, msg_id: u32) -> Result<()> {
         let res = unsafe { j2534_PassThruStopMsgFilter(self.device.interface.handle, self.id, msg_id) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(())
+    }
+
+    /// Repetitively transmit network protocol messages at the specified time interval over an existing logical communication channel. There is a limit of ten periodic messages per network layer protocol.
+    /// Returns a handle for the periodic message used in `Channel::stop_periodic_msg`
+    /// 
+    /// # Arguments
+    /// 
+    /// * `msg` - The message to send
+    /// * `time_interval` - The time in milliseconds to wait between sending messages. The acceptable range is between 5 and 65,535 milliseconds.
+    pub fn start_periodic_msg(&self, msg: &PassThruMsg, time_interval: u32) -> Result<u32> {
+        let mut msg_id = 0;
+        let res = unsafe { j2534_PassThruStartPeriodicMsg(self.device.interface.handle, self.id, msg as *const PassThruMsg, &mut msg_id as *mut libc::uint32_t, time_interval) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(msg_id)
+    }
+
+    /// Stops a periodic mesage started with `Channel::start_periodic_msg`
+    /// 
+    /// # Arguments
+    /// 
+    /// * msg_id = the id of the periodic message returned from `Channel::start_periodiC_msg`
+    pub fn stop_periodic_msg(&self, msg_id: u32) -> Result<()> {
+        let res = unsafe { j2534_PassThruStopPeriodicMsg(self.device.interface.handle, self.id, msg_id) };
         if res != 0 {
             return Err(Error::from_code(res));
         }
