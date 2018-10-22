@@ -7,6 +7,7 @@ use std::ffi;
 use std::io;
 use std::fmt;
 use std::error;
+use std::rc;
 use std::str::Utf8Error;
 use winreg::RegKey;
 use winreg::enums::*;
@@ -143,14 +144,14 @@ pub struct Interface {
 }
 
 /// Represents a J2534 device created with `Interface::open`
-pub struct Device<'a> {
-    interface: &'a Interface,
+pub struct Device {
+    interface: Rc<Interface>,
     id: u32,
 }
 
 /// Represents a J2534 channel
-pub struct Channel<'a> {
-    device: &'a Device<'a>,
+pub struct Channel {
+    device: Rc<Device>,
     id: u32,
     protocol_id: u32,
 }
