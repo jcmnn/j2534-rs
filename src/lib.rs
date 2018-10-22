@@ -7,6 +7,7 @@ use std::ffi;
 use std::io;
 use std::fmt;
 use std::error;
+use std::rc::Rc;
 use std::str::Utf8Error;
 use winreg::RegKey;
 use winreg::enums::*;
@@ -115,7 +116,7 @@ impl PassThruMsg {
         }
     }
 
-    pub fn new(protocol: Protocol, rx_status: u32, tx_flags: u32, timestamp: u32, data_size: u32, extra_data_index: u32, data: &[u8]) -> PassThruMsg {
+    pub fn new(protocol: Protocol, rx_status: u32, tx_flags: u32, timestamp: u32, extra_data_index: u32, data: &[u8]) -> PassThruMsg {
         PassThruMsg::new_raw(protocol, rx_status, tx_flags, timestamp, data.len() as u32, extra_data_index, {
                 let mut d: [u8; 4128] = [0; 4128];
                 d[..data.len()].copy_from_slice(&data);
@@ -143,14 +144,14 @@ pub struct Interface {
 }
 
 /// Represents a J2534 device created with `Interface::open`
-pub struct Device<'a> {
-    interface: &'a Interface,
+pub struct Device {
+    interface: Rc<Interface>,
     id: u32,
 }
 
 /// Represents a J2534 channel
-pub struct Channel<'a> {
-    device: &'a Device<'a>,
+pub struct Channel {
+    device: Rc<Device>,
     id: u32,
     protocol_id: u32,
 }
@@ -174,50 +175,6 @@ impl Interface {
             return Err(Error{kind: ErrorKind::NotFound});
         }
         Ok(Interface{handle})
-    }
-
-    /// Creates a `Device` from the J2534 connected to the given port
-    /// 
-    /// # Arguments
-    /// 
-    /// * `port` - The port to search for a J2534 device
-    /// 
-    /// # Example
-    /// ```
-    /// use j2534::Interface;
-    /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
-    /// let device = interface.open("COM2").unwrap();
-    /// ```
-    pub fn open(&self, port: &str) -> Result<Device> {
-        let s = ffi::CString::new(port).unwrap();
-        let raw = s.as_ptr();
-        let mut id = 0;
-        
-        let res = unsafe { j2534_PassThruOpen(self.handle, raw, &mut id as *mut libc::uint32_t) };
-        if res != 0 {
-            return Err(Error::from_code(res));
-        }
-
-        Ok(Device {interface: self, id})
-    }
-
-    /// Creates a `Device` from any connected J2534 devices
-    /// 
-    /// # Example
-    /// ```
-    /// use j2534::Interface;
-    /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
-    /// let device = interface.open_any().unwrap();
-    /// ```
-    pub fn open_any(&self) -> Result<Device> {
-        let raw = 0 as *const libc::c_void;
-        let mut id = 0;
-        let res = unsafe { j2534_PassThruOpen(self.handle, raw as *const libc::c_char, &mut id as *mut libc::uint32_t) };
-        if res != 0 {
-            return Err(Error::from_code(res));
-        }
-
-        Ok(Device {interface: self, id})
     }
 
     /// Returns a text description of the most recent error
@@ -283,30 +240,49 @@ pub struct VersionInfo {
 pub const SHORT_TO_GROUND: u32= 0xFFFFFFFE;
 pub const VOLTAGE_OFF: u32 = 0xFFFFFFFF;
 
-impl<'a> Device<'a> {
-    /// See `Device::connect`
-    pub fn connect_raw(&self, protocol: u32, flags: u32, baudrate: u32) -> Result<Channel> {
-        let mut id: u32 = 0;
-        let res = unsafe { j2534_PassThruConnect(self.interface.handle, self.id, protocol, flags, baudrate, &mut id as *mut libc::uint32_t) };
-        if res != 0 {
-            return Err(Error::from_code(res));
-        }
-        Ok(Channel {
-            device: self,
-            id,
-            protocol_id: protocol,
-        })
-    }
-
-    /// Creates a channel
+impl Device {
+    /// Creates a `Device` from the PassThru interface connected to the given port
     /// 
     /// # Arguments
     /// 
-    /// * protocol - Protocol to use with the channel
-    /// * flags - Protocol-specific flags. This is usually set to zero
-    /// * baudrate - Initial baud rate for the channel
-    pub fn connect(&self, protocol: Protocol, flags: ConnectFlags, baudrate: u32) -> Result<Channel> {
-        self.connect_raw(protocol as u32, flags.bits(), baudrate)
+    /// * `port` - The port to search for a J2534 device
+    /// 
+    /// # Example
+    /// ```
+    /// use j2534::Interface;
+    /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
+    /// let device = interface.open("COM2").unwrap();
+    /// ```
+    pub fn open(interface: Rc<Interface>, port: &str) -> Result<Device> {
+        let s = ffi::CString::new(port).unwrap();
+        let raw = s.as_ptr();
+        let mut id = 0;
+        
+        let res = unsafe { j2534_PassThruOpen(interface.handle, raw, &mut id as *mut libc::uint32_t) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+
+        Ok(Device {interface, id})
+    }
+
+    /// Creates a `Device` from any connected PassThru devices
+    /// 
+    /// # Example
+    /// ```
+    /// use j2534::Interface;
+    /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
+    /// let device = interface.open_any().unwrap();
+    /// ```
+    pub fn open_any(interface: Rc<Interface>) -> Result<Device> {
+        let raw = 0 as *const libc::c_void;
+        let mut id = 0;
+        let res = unsafe { j2534_PassThruOpen(interface.handle, raw as *const libc::c_char, &mut id as *mut libc::uint32_t) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+
+        Ok(Device {interface, id})
     }
 
     /// Reads the version info of the device
@@ -344,13 +320,38 @@ impl<'a> Device<'a> {
     }
 }
 
-impl<'a> Drop for Device<'a> {
+impl Drop for Device {
     fn drop(&mut self) {
         unsafe { j2534_PassThruClose(self.interface.handle, self.id) };
     }
 }
 
-impl<'a> Channel<'a> {
+impl Channel {
+    /// See `Channel::connect`
+    pub fn connect_raw(device: Rc<Device>, protocol: u32, flags: u32, baudrate: u32) -> Result<Channel> {
+        let mut id: u32 = 0;
+        let res = unsafe { j2534_PassThruConnect(device.interface.handle, device.id, protocol, flags, baudrate, &mut id as *mut libc::uint32_t) };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(Channel {
+            device,
+            id,
+            protocol_id: protocol,
+        })
+    }
+
+    /// Creates a channel
+    /// 
+    /// # Arguments
+    /// 
+    /// * protocol - Protocol to use with the channel
+    /// * flags - Protocol-specific flags. This is usually set to zero
+    /// * baudrate - Initial baud rate for the channel
+    pub fn connect(device: Rc<Device>, protocol: Protocol, flags: ConnectFlags, baudrate: u32) -> Result<Channel> {
+        Self::connect_raw(device, protocol as u32, flags.bits(), baudrate)
+    }
+
     /// Fills `msgs` with messages until timing out or until `msgs` is filled. Returns the slice of messages read.
     /// 
     /// # Arguments
@@ -473,7 +474,7 @@ impl<'a> Channel<'a> {
     }
 }
 
-impl<'a> Drop for Channel<'a> {
+impl Drop for Channel {
     fn drop(&mut self) {
         unsafe { j2534_PassThruDisconnect(self.device.interface.handle, self.id) };
     }
