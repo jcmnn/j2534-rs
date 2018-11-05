@@ -34,16 +34,6 @@ impl Error {
     pub fn from_code(code: i32) -> Error {
         Error { kind: ErrorKind::Code(code) }
     }
-
-    fn as_str(&self) -> &str {
-        match self.kind {
-            ErrorKind::NotFound => "not found",
-            ErrorKind::Code(code) => match code {
-                _ => "unknown error",
-            },
-            ErrorKind::Utf8 => "utf8 error",
-        }
-    }
 }
 
 impl From<Utf8Error> for Error {
@@ -54,19 +44,13 @@ impl From<Utf8Error> for Error {
     }
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        self.as_str()
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        match self.kind {
+            ErrorKind::NotFound => write!(f, "Not found"),
+            ErrorKind::Code(code) => write!(f, "error code: {}", code),
+            ErrorKind::Utf8 => write!(f, "utf8 error"),
+        }
     }
 }
 
