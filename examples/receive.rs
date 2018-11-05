@@ -17,7 +17,7 @@ fn main() {
         let mut msgs: [j2534::PassThruMsg; 1] = [j2534::PassThruMsg::default(); 1];
         let read = channel.read_msgs(&mut msgs, 1000);
         for msg in read.iter() {
-            println!("Got message");
+            println!("Message: {}", msg);
         }
     }
 }
