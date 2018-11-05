@@ -3,6 +3,11 @@ name = "j2534"
 version = "0.1.0"
 authors = ["Altenius <jacobjm18@gmail.com>"]
 build = "build.rs"
+keywords = ["cars", "tuning", "passthru"]
+categories = ["external-ffi-bindings", "hardware-support"]
+
+[badges]
+maintenance = { status = "passively-maintained" }
 
 [dependencies]
 winreg = "0.5"
