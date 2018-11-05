@@ -1,3 +1,5 @@
+#![cfg(windows)]
+
 extern crate winreg;
 extern crate libc;
 #[macro_use]
