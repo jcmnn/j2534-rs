@@ -1,6 +1,6 @@
 #include <windows.h>
 #include <cassert>
-#include <cstdint>
+#include <stdint.h>
 
 
 
@@ -15,27 +15,27 @@ struct PASSTHRU_MSG {
     unsigned char Data[4128]; /* message payload or data */
 };
 
-using PassThruOpen_t = int32_t (*)(void *, uint32_t *);
-using PassThruClose_t = int32_t (*)(uint32_t);
-using PassThruConnect_t = int32_t (*)(uint32_t, uint32_t, uint32_t, uint32_t,
+typedef int32_t (*PassThruOpen_t)(void *, uint32_t *);
+typedef int32_t (*PassThruClose_t)(uint32_t);
+typedef int32_t (*PassThruConnect_t)(uint32_t, uint32_t, uint32_t, uint32_t,
                                       uint32_t *);
-using PassThruDisconnect_t = int32_t (*)(uint32_t);
-using PassThruReadMsgs_t = int32_t (*)(uint32_t, PASSTHRU_MSG *, uint32_t *,
+typedef int32_t (*PassThruDisconnect_t)(uint32_t);
+typedef int32_t (*PassThruReadMsgs_t)(uint32_t, PASSTHRU_MSG *, uint32_t *,
                                        uint32_t);
-using PassThruWriteMsgs_t = int32_t (*)(uint32_t, PASSTHRU_MSG *, uint32_t *,
+typedef int32_t (*PassThruWriteMsgs_t)(uint32_t, PASSTHRU_MSG *, uint32_t *,
                                         uint32_t);
-using PassThruStartPeriodicMsg_t = int32_t (*)(uint32_t, const PASSTHRU_MSG *,
+typedef int32_t (*PassThruStartPeriodicMsg_t)(uint32_t, const PASSTHRU_MSG *,
                                                uint32_t *, uint32_t);
-using PassThruStopPeriodicMsg_t = int32_t (*)(uint32_t, uint32_t);
-using PassThruStartMsgFilter_t = int32_t (*)(uint32_t, uint32_t,
+typedef int32_t (*PassThruStopPeriodicMsg_t)(uint32_t, uint32_t);
+typedef int32_t (*PassThruStartMsgFilter_t)(uint32_t, uint32_t,
                                              const PASSTHRU_MSG *,
                                              const PASSTHRU_MSG *,
                                              const PASSTHRU_MSG *, uint32_t *);
-using PassThruStopMsgFilter_t = int32_t (*)(uint32_t, uint32_t);
-using PassThruSetProgrammingVoltage_t = int32_t (*)(uint32_t, uint32_t, uint32_t);
-using PassThruReadVersion_t = int32_t (*)(uint32_t, char *, char *, char *);
-using PassThruGetLastError_t = int32_t (*)(char *);
-using PassThruIoctl_t = int32_t (*)(uint32_t, uint32_t, void *, void *);
+typedef int32_t (*PassThruStopMsgFilter_t)(uint32_t, uint32_t);
+typedef int32_t (*PassThruSetProgrammingVoltage_t)(uint32_t, uint32_t, uint32_t);
+typedef int32_t (*PassThruReadVersion_t)(uint32_t, char *, char *, char *);
+typedef int32_t (*PassThruGetLastError_t)(char *);
+typedef int32_t (*PassThruIoctl_t)(uint32_t, uint32_t, void *, void *);
 
 
 
@@ -60,40 +60,40 @@ struct Library {
 
 extern "C" void *j2534_load(const char *path) {
     void *handle = LoadLibraryA(path);
-    if (handle == nullptr) {
-        return nullptr;
+    if (handle == NULL) {
+        return NULL;
     }
     
     Library *lib = new Library;
     lib->handle = handle;
     if (!(lib->PassThruClose = reinterpret_cast<PassThruClose_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruClose"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruOpen = reinterpret_cast<PassThruOpen_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruOpen"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruConnect = reinterpret_cast<PassThruConnect_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruConnect"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruDisconnect = reinterpret_cast<PassThruDisconnect_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruDisconnect"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruIoctl = reinterpret_cast<PassThruIoctl_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruIoctl"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruReadVersion = reinterpret_cast<PassThruReadVersion_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruReadVersion"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruGetLastError = reinterpret_cast<PassThruGetLastError_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruGetLastError"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruReadMsgs = reinterpret_cast<PassThruReadMsgs_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruReadMsgs"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruStartMsgFilter = reinterpret_cast<PassThruStartMsgFilter_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruStartMsgFilter"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruStopMsgFilter = reinterpret_cast<PassThruStopMsgFilter_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruStopMsgFilter"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruWriteMsgs = reinterpret_cast<PassThruWriteMsgs_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruWriteMsgs"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruStartPeriodicMsg = reinterpret_cast<PassThruStartPeriodicMsg_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruStartPeriodicMsg"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruStopPeriodicMsg = reinterpret_cast<PassThruStopPeriodicMsg_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruStopPeriodicMsg"))))
-        return nullptr;
+        return NULL;
     if (!(lib->PassThruSetProgrammingVoltage = reinterpret_cast<PassThruSetProgrammingVoltage_t>(GetProcAddress(reinterpret_cast<HMODULE>(handle), "PassThruSetProgrammingVoltage"))))
-        return nullptr;
+        return NULL;
 
     
 
