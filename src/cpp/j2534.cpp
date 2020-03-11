@@ -15,27 +15,27 @@ struct PASSTHRU_MSG {
     unsigned char Data[4128]; /* message payload or data */
 };
 
-typedef int32_t (*PassThruOpen_t)(void *, uint32_t *);
-typedef int32_t (*PassThruClose_t)(uint32_t);
-typedef int32_t (*PassThruConnect_t)(uint32_t, uint32_t, uint32_t, uint32_t,
+typedef int32_t (WINAPI *PassThruOpen_t)(void *, uint32_t *);
+typedef int32_t (WINAPI *PassThruClose_t)(uint32_t);
+typedef int32_t (WINAPI *PassThruConnect_t)(uint32_t, uint32_t, uint32_t, uint32_t,
                                       uint32_t *);
-typedef int32_t (*PassThruDisconnect_t)(uint32_t);
-typedef int32_t (*PassThruReadMsgs_t)(uint32_t, PASSTHRU_MSG *, uint32_t *,
+typedef int32_t (WINAPI *PassThruDisconnect_t)(uint32_t);
+typedef int32_t (WINAPI *PassThruReadMsgs_t)(uint32_t, PASSTHRU_MSG *, uint32_t *,
                                        uint32_t);
-typedef int32_t (*PassThruWriteMsgs_t)(uint32_t, PASSTHRU_MSG *, uint32_t *,
+typedef int32_t (WINAPI *PassThruWriteMsgs_t)(uint32_t, PASSTHRU_MSG *, uint32_t *,
                                         uint32_t);
-typedef int32_t (*PassThruStartPeriodicMsg_t)(uint32_t, const PASSTHRU_MSG *,
+typedef int32_t (WINAPI *PassThruStartPeriodicMsg_t)(uint32_t, const PASSTHRU_MSG *,
                                                uint32_t *, uint32_t);
-typedef int32_t (*PassThruStopPeriodicMsg_t)(uint32_t, uint32_t);
-typedef int32_t (*PassThruStartMsgFilter_t)(uint32_t, uint32_t,
+typedef int32_t (WINAPI *PassThruStopPeriodicMsg_t)(uint32_t, uint32_t);
+typedef int32_t (WINAPI *PassThruStartMsgFilter_t)(uint32_t, uint32_t,
                                              const PASSTHRU_MSG *,
                                              const PASSTHRU_MSG *,
                                              const PASSTHRU_MSG *, uint32_t *);
-typedef int32_t (*PassThruStopMsgFilter_t)(uint32_t, uint32_t);
-typedef int32_t (*PassThruSetProgrammingVoltage_t)(uint32_t, uint32_t, uint32_t);
-typedef int32_t (*PassThruReadVersion_t)(uint32_t, char *, char *, char *);
-typedef int32_t (*PassThruGetLastError_t)(char *);
-typedef int32_t (*PassThruIoctl_t)(uint32_t, uint32_t, void *, void *);
+typedef int32_t (WINAPI *PassThruStopMsgFilter_t)(uint32_t, uint32_t);
+typedef int32_t (WINAPI *PassThruSetProgrammingVoltage_t)(uint32_t, uint32_t, uint32_t);
+typedef int32_t (WINAPI *PassThruReadVersion_t)(uint32_t, char *, char *, char *);
+typedef int32_t (WINAPI *PassThruGetLastError_t)(char *);
+typedef int32_t (WINAPI *PassThruIoctl_t)(uint32_t, uint32_t, void *, void *);
 
 
 
