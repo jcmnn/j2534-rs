@@ -1,12 +1,11 @@
 #![cfg(windows)]
 
-extern crate libc;
-extern crate winreg;
 #[macro_use]
 extern crate bitflags;
+extern crate libc;
 extern crate libloading;
+extern crate winreg;
 
-use libloading::{Library, Symbol};
 use std::error;
 use std::ffi;
 use std::fmt;
@@ -14,6 +13,8 @@ use std::io;
 use std::path::Path;
 use std::rc::Rc;
 use std::str::Utf8Error;
+
+use libloading::{Library, Symbol};
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -56,40 +57,40 @@ impl fmt::Display for Error {
     }
 }
 
-type PassThruOpenFn = unsafe extern "C" fn(
+type PassThruOpenFn = unsafe extern "system" fn(
     name: *const libc::c_void,
     device_id: *mut libc::uint32_t,
 ) -> libc::int32_t;
-type PassThruCloseFn = unsafe extern "C" fn(device_id: libc::uint32_t) -> libc::int32_t;
-type PassThruConnectFn = unsafe extern "C" fn(
+type PassThruCloseFn = unsafe extern "system" fn(device_id: libc::uint32_t) -> libc::int32_t;
+type PassThruConnectFn = unsafe extern "system" fn(
     device_id: libc::uint32_t,
     protocol_id: libc::uint32_t,
     flags: libc::uint32_t,
     baudrate: libc::uint32_t,
     channel_id: *mut libc::uint32_t,
 ) -> libc::int32_t;
-type PassThruDisconnectFn = unsafe extern "C" fn(channel_id: libc::uint32_t) -> libc::int32_t;
-type PassThruReadMsgsFn = unsafe extern "C" fn(
+type PassThruDisconnectFn = unsafe extern "system" fn(channel_id: libc::uint32_t) -> libc::int32_t;
+type PassThruReadMsgsFn = unsafe extern "system" fn(
     channel_id: libc::uint32_t,
     msgs: *mut PassThruMsg,
     num_msgs: *mut libc::uint32_t,
     timeout: libc::uint32_t,
 ) -> libc::int32_t;
-type PassThruWriteMsgsFn = unsafe extern "C" fn(
+type PassThruWriteMsgsFn = unsafe extern "system" fn(
     channel_id: libc::uint32_t,
     msgs: *mut PassThruMsg,
     num_msgs: *mut libc::uint32_t,
     timeout: libc::uint32_t,
 ) -> libc::int32_t;
-type PassThruStartPeriodicMsgFn = unsafe extern "C" fn(
+type PassThruStartPeriodicMsgFn = unsafe extern "system" fn(
     channel_id: libc::uint32_t,
     msg: *const PassThruMsg,
     msg_id: *mut libc::uint32_t,
     time_interval: libc::uint32_t,
 ) -> libc::int32_t;
 type PassThruStopPeriodicMsgFn =
-    unsafe extern "C" fn(channel_id: libc::uint32_t, msg_id: libc::uint32_t) -> libc::int32_t;
-type PassThruStartMsgFilterFn = unsafe extern "C" fn(
+unsafe extern "system" fn(channel_id: libc::uint32_t, msg_id: libc::uint32_t) -> libc::int32_t;
+type PassThruStartMsgFilterFn = unsafe extern "system" fn(
     channel_id: libc::uint32_t,
     filter_type: libc::uint32_t,
     msg_mask: *const PassThruMsg,
@@ -98,21 +99,21 @@ type PassThruStartMsgFilterFn = unsafe extern "C" fn(
     filter_id: *mut libc::uint32_t,
 ) -> libc::int32_t;
 type PassThruStopMsgFilterFn =
-    unsafe extern "C" fn(channel_id: libc::uint32_t, filter_id: libc::uint32_t) -> libc::int32_t;
-type PassThruSetProgrammingVoltageFn = unsafe extern "C" fn(
+unsafe extern "system" fn(channel_id: libc::uint32_t, filter_id: libc::uint32_t) -> libc::int32_t;
+type PassThruSetProgrammingVoltageFn = unsafe extern "system" fn(
     device_id: libc::uint32_t,
     pin_number: libc::uint32_t,
     voltage: libc::uint32_t,
 ) -> libc::int32_t;
-type PassThruReadVersionFn = unsafe extern "C" fn(
+type PassThruReadVersionFn = unsafe extern "system" fn(
     device_id: libc::uint32_t,
     firmware_version: *mut libc::c_char,
     dll_version: *mut libc::c_char,
     api_version: *mut libc::c_char,
 ) -> libc::int32_t;
 type PassThruGetLastErrorFn =
-    unsafe extern "C" fn(error_description: *mut libc::c_char) -> libc::int32_t;
-type PassThruIoctlFn = unsafe extern "C" fn(
+unsafe extern "system" fn(error_description: *mut libc::c_char) -> libc::int32_t;
+type PassThruIoctlFn = unsafe extern "system" fn(
     handle_id: libc::uint32_t,
     ioctl_id: libc::uint32_t,
     input: *mut libc::c_void,
