@@ -1,7 +1,3 @@
-extern crate j2534;
-
-use std::rc::Rc;
-
 fn main() -> j2534::Result<()> {
     let devices = j2534::list().unwrap();
     if devices.is_empty() {
@@ -12,9 +8,7 @@ fn main() -> j2534::Result<()> {
     let device = j2534::list().unwrap().remove(0);
     println!("Opening interface '{}'", device.name);
     let i = j2534::Interface::new(&device.path)?;
-    println!("Opening device");
     let d = i.open_any()?;
-    println!("Reading version");
     let version_info = d.read_version().unwrap();
     println!("Version info: {:?}", version_info);
 

@@ -1,17 +1,18 @@
+//! J2534 PassThru defines a standard library interface for communicating with vehicles.
+//! All automakers in the US are required to provide J2534-compatible service software.
+//! J2534 provides access to the communication layer required for accessing vehicle diagnostics services as
+//! well as downloading and reflashing control modules.
+
 #![cfg(windows)]
 
 #[macro_use]
 extern crate bitflags;
-extern crate libc;
-extern crate libloading;
-extern crate winreg;
 
 use std::error;
 use std::ffi;
 use std::fmt;
 use std::io;
 use std::path::Path;
-use std::rc::Rc;
 use std::str::Utf8Error;
 
 use libloading::{Library, Symbol};
@@ -213,7 +214,7 @@ pub struct Interface {
     c_pass_thru_ioctl: PassThruIoctlFn,
 }
 
-/// Represents a J2534 device created with `Interface::open`
+/// Represents a J2534 device created with [`Interface::open`]
 pub struct Device<'a> {
     interface: &'a Interface,
     id: u32,
@@ -234,11 +235,11 @@ impl Interface {
     /// * `path` - The absolute path to the J2534 shared library
     ///
     /// # Example
-    /// ```
+    /// ```no_run
     /// use j2534::Interface;
     /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
     /// ```
-    pub fn new(path: &str) -> Result<Interface> {
+    pub fn new(path: &str) -> libloading::Result<Interface> {
         let library = Library::new(path)?;
 
         let interface = unsafe {
@@ -316,7 +317,7 @@ impl Interface {
     /// * `port` - The port to search for a J2534 device
     ///
     /// # Example
-    /// ```
+    /// ```no_run
     /// use j2534::Interface;
     /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
     /// let device = interface.open("COM2").unwrap();
@@ -689,14 +690,12 @@ pub struct Listing {
 pub fn list() -> io::Result<Vec<Listing>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
-    let passthru = hklm.open_subkey(Path::new("SOFTWARE").join("PassThruSupport.04.04"));
-    if let Err(err) = passthru {
-        if err.kind() == io::ErrorKind::NotFound {
+    let passthru = match hklm.open_subkey(Path::new("SOFTWARE").join("PassThruSupport.04.04")) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
             return Ok(Vec::new());
-        }
-        return Err(err);
-    }
-    let passthru = passthru.unwrap();
+        },
+        other => other,
+    }?;
     let mut listings = Vec::new();
 
     for name in passthru.enum_keys() {
