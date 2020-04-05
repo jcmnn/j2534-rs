@@ -1,11 +1,12 @@
 [package]
 name = "j2534"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Altenius <jacobjm18@gmail.com>"]
 keywords = ["cars", "tuning", "passthru"]
 categories = ["external-ffi-bindings", "hardware-support"]
 description = "PassThru (SAE J2534) bindings."
 documentation = "https://docs.rs/j2534"
+repository = "https://github.com/altenius/j2534-rs"
 license = "MIT"
 readme = "README.md"
 edition = "2018"
