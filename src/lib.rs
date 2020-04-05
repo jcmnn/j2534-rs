@@ -404,7 +404,7 @@ pub struct ChannelId(u32);
 #[derive(Copy, Clone, Debug)]
 pub struct DeviceId(u32);
 
-/// Period message ID
+/// Periodic message ID
 #[derive(Copy, Clone, Debug)]
 pub struct MessageId(u32);
 
