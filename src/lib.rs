@@ -11,49 +11,116 @@ extern crate bitflags;
 use std::error;
 use std::ffi;
 use std::fmt;
+use std::fmt::{Debug, Display};
 use std::io;
 use std::path::Path;
 use std::str::Utf8Error;
 
+use bitflags::_core::fmt::Formatter;
 use libloading::{Library, Symbol};
 use winreg::enums::*;
 use winreg::RegKey;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
-    NotFound,
-    Code(i32),
-    Utf8,
-    Io(io::Error),
+    #[error(transparent)]
+    Utf8Error(#[from] Utf8Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+
+    #[error("success")]
+    NoError,
+    #[error("option not supported')")]
+    NotSupported,
+    #[error("invalid channel id")]
+    InvalidChannelId,
+    #[error("invalid protocol id")]
+    InvalidProtocolId,
+    #[error("NULL was incorrectly passed as a parameter")]
+    NullParameter,
+    #[error("invalid ioctl parameter")]
+    InvalidIoctlValue,
+    #[error("invalid flags")]
+    InvalidFlags,
+    #[error("unspecified error")]
+    Failed,
+    #[error("a PassThru device is not connected")]
+    DeviceNotConnected,
+    #[error("timed out")]
+    Timeout,
+    #[error("invalid message")]
+    InvalidMessage,
+    #[error("invalid time interval")]
+    InvalidTimeInterval,
+    #[error("exceeded message limit")]
+    ExceededLimit,
+    #[error("invalid message id")]
+    InvalidMessageId,
+    #[error("device in use")]
+    DeviceInUse,
+    #[error("invalid ioctl id")]
+    InvalidIoctlId,
+    // Could not read any messages from the vehicle network
+    #[error("could not read messages")]
+    BufferEmpty,
+    #[error("transmit queue full")]
+    BufferFull,
+    // Receive buffer overflowed and messages were lost
+    #[error("receive buffer overflowed")]
+    BufferOverflow,
+    #[error("unknown pin number or resource in use")]
+    PinInvalid,
+    #[error("channel already in use")]
+    ChannelInUse,
+    #[error("message protocol does not match channel protocol")]
+    MessageProtocolId,
+    #[error("invalid filter id")]
+    InvalidFilterId,
+    #[error("no flow control filter matches outgoing message")]
+    NoFlowControl,
+    #[error("filter already exists")]
+    NotUnique,
+    #[error("unsupported baudrate")]
+    InvalidBaudrate,
+    #[error("invalid device id")]
+    InvalidDeviceId,
+    #[error("unknown j2534 error code {0}")]
+    Unknown(i32),
 }
 
 impl Error {
     pub fn from_code(code: i32) -> Error {
-        Error::Code(code)
-    }
-}
-
-impl From<Utf8Error> for Error {
-    fn from(_err: Utf8Error) -> Self {
-        Error::Utf8
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::Io(err)
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self {
-            Error::NotFound => write!(f, "Not found"),
-            Error::Code(code) => write!(f, "error code: {}", code),
-            Error::Utf8 => write!(f, "utf8 error"),
-            Error::Io(err) => write!(f, "IO Error: {}", err),
+        match code {
+            0x00 => Error::NoError,
+            0x01 => Error::NotSupported,
+            0x02 => Error::InvalidChannelId,
+            0x03 => Error::InvalidProtocolId,
+            0x04 => Error::NullParameter,
+            0x05 => Error::InvalidIoctlValue,
+            0x06 => Error::InvalidFlags,
+            0x07 => Error::Failed,
+            0x08 => Error::DeviceNotConnected,
+            0x09 => Error::Timeout,
+            0x0A => Error::InvalidMessage,
+            0x0B => Error::InvalidTimeInterval,
+            0x0C => Error::ExceededLimit,
+            0x0D => Error::InvalidMessageId,
+            0x0E => Error::DeviceInUse,
+            0x0F => Error::InvalidIoctlId,
+            0x10 => Error::BufferEmpty,
+            0x11 => Error::BufferFull,
+            0x12 => Error::BufferOverflow,
+            0x13 => Error::PinInvalid,
+            0x14 => Error::ChannelInUse,
+            0x15 => Error::MessageProtocolId,
+            0x16 => Error::InvalidFilterId,
+            0x17 => Error::NoFlowControl,
+            0x18 => Error::NotUnique,
+            0x19 => Error::InvalidBaudrate,
+            0x1A => Error::InvalidDeviceId,
+            other => Error::Unknown(other),
         }
     }
 }
@@ -99,8 +166,10 @@ type PassThruStartMsgFilterFn = unsafe extern "system" fn(
     flow_control_msg: *const PassThruMsg,
     filter_id: *mut libc::uint32_t,
 ) -> libc::int32_t;
-type PassThruStopMsgFilterFn =
-unsafe extern "system" fn(channel_id: libc::uint32_t, filter_id: libc::uint32_t) -> libc::int32_t;
+type PassThruStopMsgFilterFn = unsafe extern "system" fn(
+    channel_id: libc::uint32_t,
+    filter_id: libc::uint32_t,
+) -> libc::int32_t;
 type PassThruSetProgrammingVoltageFn = unsafe extern "system" fn(
     device_id: libc::uint32_t,
     pin_number: libc::uint32_t,
@@ -194,6 +263,19 @@ impl Default for PassThruMsg {
     }
 }
 
+impl Debug for PassThruMsg {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_struct("PassThruMsg")
+            .field("protocol_id", &self.protocol_id)
+            .field("rx_status", &self.rx_status)
+            .field("tx_flags", &self.tx_flags)
+            .field("timestamp", &self.timestamp)
+            .field("extra_data_index", &self.extra_data_index)
+            .field("data", &&self.data[..self.data_size as usize])
+            .finish()
+    }
+}
+
 /// Represents a J2534 library
 pub struct Interface {
     library: Library,
@@ -267,8 +349,7 @@ impl Interface {
                 library.get(b"PassThruStopPeriodicMsg\0")?;
             let c_pass_thru_set_programming_voltage: Symbol<PassThruSetProgrammingVoltageFn> =
                 library.get(b"PassThruSetProgrammingVoltage\0")?;
-            let c_pass_thru_ioctl: Symbol<PassThruIoctlFn> =
-                library.get(b"PassThruIoctl\0")?;
+            let c_pass_thru_ioctl: Symbol<PassThruIoctlFn> = library.get(b"PassThruIoctl\0")?;
             Interface {
                 c_pass_thru_open: *c_pass_thru_open.into_raw(),
                 c_pass_thru_close: *c_pass_thru_close.into_raw(),
@@ -507,8 +588,8 @@ impl<'a> Channel<'a> {
     ///
     /// # Arguments
     ///
-    /// * msgs - The array of messages to fill.
-    /// * timeout - The amount of time in milliseconds to wait. If set to zero, reads buffered messages and returns immediately
+    /// * `msgs` - The array of messages to fill.
+    /// * `timeout` - The amount of time in milliseconds to wait. If set to zero, reads buffered messages and returns immediately
     pub fn read_msgs<'b>(
         &self,
         msgs: &'b mut [PassThruMsg],
@@ -693,7 +774,7 @@ pub fn list() -> io::Result<Vec<Listing>> {
     let passthru = match hklm.open_subkey(Path::new("SOFTWARE").join("PassThruSupport.04.04")) {
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
             return Ok(Vec::new());
-        },
+        }
         other => other,
     }?;
     let mut listings = Vec::new();
