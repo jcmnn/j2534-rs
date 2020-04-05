@@ -10,6 +10,7 @@ extern crate bitflags;
 
 use std::error;
 use std::ffi;
+use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::{Debug, Display};
 use std::io;
@@ -276,6 +277,18 @@ impl Debug for PassThruMsg {
     }
 }
 
+/// Vehicle communication channel ID
+#[derive(Copy, Clone, Debug)]
+pub struct ChannelId(u32);
+
+/// Period message ID
+#[derive(Copy, Clone, Debug)]
+pub struct MessageId(u32);
+
+/// Message filter ID
+#[derive(Copy, Clone, Debug)]
+pub struct FilterId(u32);
+
 /// Represents a J2534 library
 pub struct Interface {
     library: Library,
@@ -321,7 +334,7 @@ impl Interface {
     /// use j2534::Interface;
     /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
     /// ```
-    pub fn new(path: &str) -> libloading::Result<Interface> {
+    pub fn new<S: AsRef<OsStr>>(path: S) -> libloading::Result<Interface> {
         let library = Library::new(path)?;
 
         let interface = unsafe {
@@ -403,7 +416,7 @@ impl Interface {
     /// let interface = Interface::new("C:\\j2534_driver.dll").unwrap();
     /// let device = interface.open("COM2").unwrap();
     /// ```
-    pub fn open(&self, port: &str) -> Result<Device> {
+    pub fn open<S: Into<Vec<u8>>>(&self, port: S) -> Result<Device> {
         let s = ffi::CString::new(port).unwrap();
         let raw = s.as_ptr() as *const libc::c_void;
         let mut id = 0;
@@ -662,6 +675,8 @@ impl<'a> Channel<'a> {
 
     /// Sets up a network protocol filter to filter messages received by the PassThru device. There is a limit of ten filters per network layer protocol.
     /// The device blocks all receive frames by default when no filters are defined.
+    ///
+    /// Returns filter ID
     /// http://www.drewtech.com/support/passthru/startmsgfilter.html
     pub fn start_msg_filter(
         &self,
@@ -669,7 +684,7 @@ impl<'a> Channel<'a> {
         mask_msg: Option<&PassThruMsg>,
         pattern_msg: Option<&PassThruMsg>,
         flow_control_msg: Option<&PassThruMsg>,
-    ) -> Result<u32> {
+    ) -> Result<FilterId> {
         let mut msg_id: u32 = 0;
 
         let mask_ptr = match mask_msg {
@@ -700,7 +715,7 @@ impl<'a> Channel<'a> {
         if res != 0 {
             return Err(Error::from_code(res));
         }
-        Ok(msg_id)
+        Ok(FilterId(msg_id))
     }
 
     /// Removes a message filter started with `Channel::start_msg_filter`
@@ -708,8 +723,9 @@ impl<'a> Channel<'a> {
     /// # Arguments
     ///
     /// * `msg_id` - The id of the message returned from `Channel::start_msg_filter`
-    pub fn stop_msg_filter(&self, msg_id: u32) -> Result<()> {
-        let res = unsafe { (&self.device.interface.c_pass_thru_stop_msg_filter)(self.id, msg_id) };
+    pub fn stop_msg_filter(&self, filter_id: FilterId) -> Result<()> {
+        let res =
+            unsafe { (&self.device.interface.c_pass_thru_stop_msg_filter)(self.id, filter_id.0) };
         if res != 0 {
             return Err(Error::from_code(res));
         }
@@ -723,7 +739,7 @@ impl<'a> Channel<'a> {
     ///
     /// * `msg` - The message to send
     /// * `time_interval` - The time in milliseconds to wait between sending messages. The acceptable range is between 5 and 65,535 milliseconds.
-    pub fn start_periodic_msg(&self, msg: &PassThruMsg, time_interval: u32) -> Result<u32> {
+    pub fn start_periodic_msg(&self, msg: &PassThruMsg, time_interval: u32) -> Result<MessageId> {
         let mut msg_id = 0;
         let res = unsafe {
             (&self.device.interface.c_pass_thru_start_periodic_msg)(
@@ -736,7 +752,7 @@ impl<'a> Channel<'a> {
         if res != 0 {
             return Err(Error::from_code(res));
         }
-        Ok(msg_id)
+        Ok(MessageId(msg_id))
     }
 
     /// Stops a periodic mesage started with `Channel::start_periodic_msg`
@@ -744,9 +760,9 @@ impl<'a> Channel<'a> {
     /// # Arguments
     ///
     /// * msg_id = the id of the periodic message returned from `Channel::start_periodiC_msg`
-    pub fn stop_periodic_msg(&self, msg_id: u32) -> Result<()> {
+    pub fn stop_periodic_msg(&self, msg_id: MessageId) -> Result<()> {
         let res =
-            unsafe { (&self.device.interface.c_pass_thru_stop_periodic_msg)(self.id, msg_id) };
+            unsafe { (&self.device.interface.c_pass_thru_stop_periodic_msg)(self.id, msg_id.0) };
         if res != 0 {
             return Err(Error::from_code(res));
         }
