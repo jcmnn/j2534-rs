@@ -26,7 +26,7 @@ fn main() -> j2534::Result<()> {
         .unwrap();
     // Create a new message with an arbitration id of `8` and payload of `[0, 1, 2, 3]`.
     let message = PassThruMsg::new_can(8, &[0, 1, 2, 3]);
-    channel.write(&[message], 1000)?;
+    channel.write(&mut [message], 1000)?;
     Ok(())
 }
 ```
