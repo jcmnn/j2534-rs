@@ -5,9 +5,14 @@ authors = ["Altenius <jacobjm18@gmail.com>"]
 keywords = ["cars", "tuning", "passthru"]
 categories = ["external-ffi-bindings", "hardware-support"]
 description = "PassThru (SAE J2534) bindings."
+documentation = "https://docs.rs/j2534"
 license = "MIT"
 readme = "README.md"
 edition = "2018"
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "i686-pc-windows-msvc"
 
 # [badges]
 # maintenance = { status = "passively-maintained" }

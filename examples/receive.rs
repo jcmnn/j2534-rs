@@ -1,8 +1,8 @@
-use j2534::PassThruMsg;
+use j2534::{PassThruMsg, RxStatus, TxFlags};
 
 fn main() -> j2534::Result<()> {
     // Get a list of interfaces
-    let device = match j2534::list()?.into_iter().next() {
+    let device = match j2534::drivers()?.into_iter().next() {
         Some(device) => device,
         None => {
             println!("No J2534 interfaces found");
@@ -24,7 +24,14 @@ fn main() -> j2534::Result<()> {
         .unwrap();
 
     // Create a filter allowing all messages to be received
-    let filter = PassThruMsg::new(j2534::Protocol::CAN, 0, 0, 0, 0, &[0_u8; 5]);
+    let filter = PassThruMsg::new(
+        j2534::Protocol::CAN,
+        RxStatus::NONE,
+        TxFlags::NONE,
+        0,
+        0,
+        &[0_u8; 5],
+    );
     let _ = channel.start_msg_filter(j2534::FilterType::Pass, Some(&filter), Some(&filter), None);
 
     // Read one message

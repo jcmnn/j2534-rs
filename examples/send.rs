@@ -1,8 +1,8 @@
-use j2534::PassThruMsg;
+use j2534::{PassThruMsg, RxStatus, TxFlags};
 
 fn main() -> j2534::Result<()> {
     // Get a list of interfaces
-    let device = match j2534::list()?.into_iter().next() {
+    let device = match j2534::drivers()?.into_iter().next() {
         Some(device) => device,
         None => {
             println!("No J2534 interfaces found");
@@ -25,8 +25,8 @@ fn main() -> j2534::Result<()> {
 
     let message = PassThruMsg::new(
         j2534::Protocol::CAN,
-        0, // rx_status
-        0, // tx_flags
+        RxStatus::NONE, // rx_status
+        TxFlags::NONE,  // tx_flags
         0, // timestamp
         0, // extra_data_index
         &[

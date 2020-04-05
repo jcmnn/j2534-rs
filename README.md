@@ -14,7 +14,7 @@ The J2534 specification requires PassThru libraries to be compiled for 32 bit, s
 
 ### Example
 ```rust
-use j2534::{Interface, PassThruMsg, Protocol, ConnectFlags};
+use j2534::{Interface, PassThruMsg, Protocol, ConnectFlags, RxStatus, TxFlags};
 
 fn main() -> j2534::Result<()> {
     // Open the library and connect to a device
@@ -28,8 +28,8 @@ fn main() -> j2534::Result<()> {
 
     let message = PassThruMsg::new(
         Protocol::CAN,
-        0, // rx_status
-        0, // tx_flags
+        RxStatus::NONE, // rx_status
+        TxFlags::NONE, // tx_flags
         0, // timestamp
         0, // extra_data_index
         &[

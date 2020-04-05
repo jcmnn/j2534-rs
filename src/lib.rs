@@ -8,11 +8,10 @@
 #[macro_use]
 extern crate bitflags;
 
-use std::error;
 use std::ffi;
 use std::ffi::OsStr;
 use std::fmt;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::io;
 use std::path::Path;
 use std::str::Utf8Error;
@@ -194,7 +193,7 @@ type PassThruIoctlFn = unsafe extern "system" fn(
 // Much of the descriptions and APIs used here were taken from http://www.drewtech.com/support/passthru.html
 
 #[derive(Copy, Clone)]
-#[repr(C)]
+#[repr(C, packed(1))]
 pub struct PassThruMsg {
     pub protocol_id: u32,
     pub rx_status: u32,
@@ -205,11 +204,29 @@ pub struct PassThruMsg {
     pub data: [u8; 4128],
 }
 
+#[repr(C, packed(1))]
+pub struct SConfig {
+    parameter: ConfigId,
+    value: u32,
+}
+
+#[repr(C, packed(1))]
+pub struct SConfigList {
+    size: u32,
+    config_ptr: *const SConfig,
+}
+
+#[repr(C, packed(1))]
+pub struct SByteArray {
+    size: u32,
+    byte_ptr: *const u8,
+}
+
 impl PassThruMsg {
     pub fn new_raw(
         protocol: Protocol,
-        rx_status: u32,
-        tx_flags: u32,
+        rx_status: RxStatus,
+        tx_flags: TxFlags,
         timestamp: u32,
         data_size: u32,
         extra_data_index: u32,
@@ -217,8 +234,8 @@ impl PassThruMsg {
     ) -> PassThruMsg {
         PassThruMsg {
             protocol_id: protocol as u32,
-            rx_status,
-            tx_flags,
+            rx_status: rx_status.bits,
+            tx_flags: tx_flags.bits,
             timestamp,
             data_size,
             extra_data_index,
@@ -228,8 +245,8 @@ impl PassThruMsg {
 
     pub fn new(
         protocol: Protocol,
-        rx_status: u32,
-        tx_flags: u32,
+        rx_status: RxStatus,
+        tx_flags: TxFlags,
         timestamp: u32,
         extra_data_index: u32,
         data: &[u8],
@@ -266,14 +283,16 @@ impl Default for PassThruMsg {
 
 impl Debug for PassThruMsg {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_struct("PassThruMsg")
-            .field("protocol_id", &self.protocol_id)
-            .field("rx_status", &self.rx_status)
-            .field("tx_flags", &self.tx_flags)
-            .field("timestamp", &self.timestamp)
-            .field("extra_data_index", &self.extra_data_index)
-            .field("data", &&self.data[..self.data_size as usize])
-            .finish()
+        unsafe {
+            f.debug_struct("PassThruMsg")
+                .field("protocol_id", &self.protocol_id)
+                .field("rx_status", &self.rx_status)
+                .field("tx_flags", &self.tx_flags)
+                .field("timestamp", &self.timestamp)
+                .field("extra_data_index", &self.extra_data_index)
+                .field("data", &&self.data[..self.data_size as usize])
+                .finish()
+        }
     }
 }
 
@@ -453,6 +472,21 @@ impl Interface {
             id,
         })
     }
+
+    /// General purpose I/O control for modifying device or channel characteristics.
+    pub unsafe fn ioctl(
+        &self,
+        handle: u32,
+        id: IoctlId,
+        input: *mut libc::c_void,
+        output: *mut libc::c_void,
+    ) -> Result<i32> {
+        let res = (&self.c_pass_thru_ioctl)(handle, id as u32, input, output);
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(res)
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -477,6 +511,155 @@ bitflags! {
         const CAN_ID_BOTH = 0x800;
         const ISO9141_K_LINE_ONLY = 0x1000;
     }
+}
+
+bitflags! {
+    pub struct TxFlags: u32 {
+        const NONE = 0;
+        // 0 = no padding
+        // 1 = pad all flow controlled messages to a full CAN frame using zeroes
+        const ISO15765_FRAME_PAD = 0x00000040;
+
+        const ISO15765_ADDR_TYPE = 0x00000080;
+        const CAN_29BIT_ID =  0x00000100;
+
+        // 0 = Interface message timing as specified in ISO 14230
+        // 1 = After a response is received for a physical request, the wait time shall be reduced to P3_MIN
+        // Does not affect timing on responses to functional requests
+        const WAIT_P3_MIN_ONLY = 0x00000200;
+
+        const SW_CAN_HV_TX = 0x00000400;
+
+        // 0 = Transmit using SCI Full duplex mode
+        // 1 = Transmit using SCI Half duplex mode
+        const SCI_MODE = 0x00400000;
+
+        // 0 = no voltage after message transmit
+        // 1 = apply 20V after message transmit
+        const SCI_TX_VOLTAGE = 0x00800000;
+
+        const DT_PERIODIC_UPDATE = 0x10000000;
+    }
+}
+
+bitflags! {
+    pub struct RxStatus: u32 {
+        const NONE = 0;
+        // 0 = received
+        // 1 = transmitted
+        const TX_MSG_TYPE  = 0x00000001;
+
+        // 0 = Not a start of message indication
+        // 1 = First byte or frame received
+        const START_OF_MESSAGE = 0x00000002;
+        const ISO15765_FIRST_FRAME = 0x00000002  ;
+
+        const ISO15765_EXT_ADDR = 0x00000080;
+
+        // 0 = No break received
+        // 1 = Break received
+        const RX_BREAK = 0x00000004;
+
+        // 0 = No TxDone
+        // 1 = TxDone
+        const TX_INDICATION   = 0x00000008;
+        const TX_DONE = 0x00000008;
+
+        // 0 = No Error
+        // 1 = Padding Error
+        const ISO15765_PADDING_ERROR = 0x00000010;
+
+        // 0 = no extended address,
+        // 1 = extended address is first byte after the CAN ID
+        const ISO15765_ADDR_TYPE = 0x00000080;
+
+        const CAN_29BIT_ID = 0x00000100;
+
+        const SW_CAN_NS_RX = 0x00040000;
+        const SW_CAN_HS_RX = 0x00020000;
+        const SW_CAN_HV_RX = 0x00010000;
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum IoctlId {
+    GET_CONFIG = 0x01,
+    SET_CONFIG = 0x02,
+    READ_VBATT = 0x03,
+    FIVE_BAUD_INIT = 0x04,
+    FAST_INIT = 0x05,
+    // unused 0x06
+    CLEAR_TX_BUFFER = 0x07,
+    CLEAR_RX_BUFFER = 0x08,
+    CLEAR_PERIODIC_MSGS = 0x09,
+    CLEAR_MSG_FILTERS = 0x0A,
+    CLEAR_FUNCT_MSG_LOOKUP_TABLE = 0x0B,
+    ADD_TO_FUNCT_MSG_LOOKUP_TABLE = 0x0C,
+    DELETE_FROM_FUNCT_MSG_LOOKUP_TABLE = 0x0D,
+    READ_PROG_VOLTAGE = 0x0E,
+
+    SW_CAN_HS = 0x8000,
+    SW_CAN_NS = 0x8001,
+    SET_POLL_RESPONSE = 0x8002,
+    BECOME_MASTER = 0x8003,
+}
+
+#[derive(Copy, Clone)]
+pub enum ConfigId {
+    DATA_RATE = 0x01,
+    LOOPBACK = 0x03,
+    NODE_ADDRESS = 0x04,
+    NETWORK_LINE = 0x05,
+    P1_MIN = 0x06,
+    P1_MAX = 0x07,
+    P2_MIN = 0x08,
+    P2_MAX = 0x09,
+    P3_MIN = 0x0A,
+    P3_MAX = 0x0B,
+    P4_MIN = 0x0C,
+    P4_MAX = 0x0D,
+
+    W1 = 0x0E,
+    W2 = 0x0F,
+    W3 = 0x10,
+    W4 = 0x11,
+    W5 = 0x12,
+    TIDLE = 0x13,
+    TINIL = 0x14,
+    TWUP = 0x15,
+    PARITY = 0x16,
+    BIT_SAMPLE_POINT = 0x17,
+    SYNC_JUMP_WIDTH = 0x18,
+    W0 = 0x19,
+    T1_MAX = 0x1A,
+    T2_MAX = 0x1B,
+
+    T4_MAX = 0x1C,
+    T5_MAX = 0x1D,
+    ISO15765_BS = 0x1E,
+    ISO15765_STMIN = 0x1F,
+    DATA_BITS = 0x20,
+    FIVE_BAUD_MOD = 0x21,
+    BS_TX = 0x22,
+    STMIN_TX = 0x23,
+    T3_MAX = 0x24,
+    ISO15765_WFT_MAX = 0x25,
+
+    CAN_MIXED_FORMAT = 0x8000,
+
+    J1962_PINS = 0x8001,
+
+    SW_CAN_HS_DATA_RATE = 0x8010,
+    SW_CAN_SPEEDCHANGE_ENABLE = 0x8011,
+    SW_CAN_RES_SWITCH = 0x8012,
+    ACTIVE_CHANNELS = 0x8020,
+    SAMPLE_RATE = 0x8021,
+    SAMPLES_PER_READING = 0x8022,
+    READINGS_PER_MSG = 0x8023,
+    AVERAGING_METHOD = 0x8024,
+    SAMPLE_RESOLUTION = 0x8025,
+    INPUT_RANGE_LOW = 0x8026,
+    INPUT_RANGE_HIGH = 0x8027,
 }
 
 #[derive(Copy, Clone)]
@@ -551,7 +734,7 @@ impl<'a> Device<'a> {
         Ok(())
     }
 
-    /// See `Channel::connect`
+    /// See [`Channel::connect`]
     pub fn connect_raw(&self, protocol: u32, flags: u32, baudrate: u32) -> Result<Channel> {
         let mut id: u32 = 0;
         let res = unsafe {
@@ -588,11 +771,39 @@ impl<'a> Device<'a> {
     ) -> Result<Channel> {
         self.connect_raw(protocol as u32, flags.bits(), baudrate)
     }
+
+    /// Returns the battery voltage in millivolts read from Pin 16 on the J1962 connector.
+    pub fn read_battery_voltage(&self) -> Result<u32> {
+        let mut voltage: u32 = 0;
+        unsafe {
+            self.interface.ioctl(
+                self.id,
+                IoctlId::READ_VBATT,
+                std::ptr::null_mut::<libc::c_void>(),
+                (&mut voltage) as *mut _ as *mut libc::c_void,
+            )
+        }?;
+        Ok(voltage)
+    }
+
+    /// Returns the current output voltage for ECU reprogramming in millivolts.
+    pub fn read_programming_voltage(&self) -> Result<u32> {
+        let mut voltage: u32 = 0;
+        unsafe {
+            self.interface.ioctl(
+                self.id,
+                IoctlId::READ_PROG_VOLTAGE,
+                std::ptr::null_mut::<libc::c_void>(),
+                (&mut voltage) as *mut _ as *mut libc::c_void,
+            )
+        }?;
+        Ok(voltage)
+    }
 }
 
 impl<'a> Drop for Device<'a> {
     fn drop(&mut self) {
-        unsafe { (&self.interface.c_pass_thru_disconnect)(self.id) };
+        unsafe { (&self.interface.c_pass_thru_close)(self.id) };
     }
 }
 
@@ -768,6 +979,92 @@ impl<'a> Channel<'a> {
         }
         Ok(())
     }
+
+    /// Clear transmit message queue
+    pub fn clear_transmit_buffer(&self) -> Result<()> {
+        unsafe {
+            self.device.interface.ioctl(
+                self.id,
+                IoctlId::CLEAR_TX_BUFFER,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        }?;
+        Ok(())
+    }
+
+    /// Halt continuous messages
+    pub fn clear_periodic_messages(&self) -> Result<()> {
+        unsafe {
+            self.device.interface.ioctl(
+                self.id,
+                IoctlId::CLEAR_PERIODIC_MSGS,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        }?;
+        Ok(())
+    }
+
+    /// Clear receive message queue
+    pub fn clear_receive_buffer(&self) -> Result<()> {
+        unsafe {
+            self.device.interface.ioctl(
+                self.id,
+                IoctlId::CLEAR_RX_BUFFER,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        }?;
+        Ok(())
+    }
+
+    /// Removes all message filters
+    pub fn clear_message_filters(&self) -> Result<()> {
+        unsafe {
+            self.device.interface.ioctl(
+                self.id,
+                IoctlId::CLEAR_MSG_FILTERS,
+                std::ptr::null_mut::<libc::c_void>(),
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        }?;
+        Ok(())
+    }
+
+    /// Gets a single configuration parameter.
+    pub fn get_config(&self, id: ConfigId) -> Result<u32> {
+        let mut input = SConfig {
+            parameter: id,
+            value: 0,
+        };
+        unsafe {
+            self.device.interface.ioctl(
+                self.id,
+                IoctlId::GET_CONFIG,
+                &mut input as *mut _ as *mut libc::c_void,
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        }?;
+        Ok(input.value)
+    }
+
+    /// Sets a single configuration parameter.
+    pub fn set_config(&self, id: ConfigId, value: u32) -> Result<()> {
+        let mut input = SConfig {
+            parameter: id,
+            value,
+        };
+        unsafe {
+            self.device.interface.ioctl(
+                self.id,
+                IoctlId::SET_CONFIG,
+                &mut input as *mut _ as *mut libc::c_void,
+                std::ptr::null_mut::<libc::c_void>(),
+            )
+        }?;
+        Ok(())
+    }
 }
 
 impl<'a> Drop for Channel<'a> {
@@ -784,7 +1081,7 @@ pub struct Listing {
 }
 
 /// Returns a list of all installed PassThru drivers
-pub fn list() -> io::Result<Vec<Listing>> {
+pub fn drivers() -> io::Result<Vec<Listing>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
     let passthru = match hklm.open_subkey(Path::new("SOFTWARE").join("PassThruSupport.04.04")) {
