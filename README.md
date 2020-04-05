@@ -1,10 +1,9 @@
 J2534
 =====
-
-Low-level J2534 PassThru support for rust.
+Low-level SAE J2534 (PassThru) support for rust.
 
 ## J2534 Introduction
-SAE J2534 PassThru defines a standard library interface for communicating with vehicles.
+SAE J2534 PassThru defines a standard library interface for communicating with vehicle control modules.
 All automakers in the US are required to provide J2534-compatible service software.
 J2534 provides access to the communication layer required for accessing vehicle diagnostics services as
 well as downloading and reflashing control modules.
@@ -25,19 +24,9 @@ fn main() -> j2534::Result<()> {
     let channel = device
         .connect(Protocol::CAN, ConnectFlags::NONE, 500000)
         .unwrap();
-
-    let message = PassThruMsg::new(
-        Protocol::CAN,
-        RxStatus::NONE, // rx_status
-        TxFlags::NONE, // tx_flags
-        0, // timestamp
-        0, // extra_data_index
-        &[
-            0_u8, 0, 0, 8, // Arbitration ID of 0x8
-            0, 1, 2, 3,
-        ], // Message
-    );
-
-    channel.write_msgs(&[message], 1000)
+    // Create a new message with an arbitration id of `8` and payload of `[0, 1, 2, 3]`.
+    let message = PassThruMsg::new_can(8, &[0, 1, 2, 3]);
+    channel.write(&[message], 1000)?;
+    Ok(())
 }
 ```

@@ -1,7 +1,28 @@
-//! J2534 PassThru defines a standard library interface for communicating with vehicles.
+//! SAE J2534 PassThru defines a standard library interface for communicating with vehicle control modules.
 //! All automakers in the US are required to provide J2534-compatible service software.
-//! J2534 provides access to the communication layer required for accessing vehicle diagnostics services as
+//! J2534 provides access to the communication layers required for accessing vehicle diagnostics services as
 //! well as downloading and reflashing control modules.
+//!
+//! ### Example
+//! ```rust
+//! use j2534::{Interface, PassThruMsg, Protocol, ConnectFlags, RxStatus, TxFlags};
+//!
+//! fn main() -> j2534::Result<()> {
+//!     // Open the library and connect to a device
+//!     let interface = Interface::new("C:\\device.dll")?;
+//!     let device = interface.open_any()?;
+//!
+//!     // Create a CAN channel
+//!     let channel = device
+//!         .connect(Protocol::CAN, ConnectFlags::NONE, 500000)
+//!         .unwrap();
+//!
+//!     // Create a new message with an arbitration id of `8` and payload of `[0, 1, 2, 3]`.
+//!     let message = PassThruMsg::new_can(8, &[0, 1, 2, 3]);
+//!     channel.write(&[message], 1000)?;
+//!     Ok(())
+//! }
+//! ```
 
 #![cfg(windows)]
 
@@ -194,6 +215,7 @@ type PassThruIoctlFn = unsafe extern "system" fn(
 
 #[derive(Copy, Clone)]
 #[repr(C, packed(1))]
+/// A message sent a received from the device
 pub struct PassThruMsg {
     pub protocol_id: u32,
     pub rx_status: u32,
@@ -205,19 +227,19 @@ pub struct PassThruMsg {
 }
 
 #[repr(C, packed(1))]
-pub struct SConfig {
-    parameter: ConfigId,
+struct SConfig {
+    parameter: u32,
     value: u32,
 }
 
 #[repr(C, packed(1))]
-pub struct SConfigList {
+struct SConfigList {
     size: u32,
     config_ptr: *const SConfig,
 }
 
 #[repr(C, packed(1))]
-pub struct SByteArray {
+struct SByteArray {
     size: u32,
     byte_ptr: *const u8,
 }
@@ -243,27 +265,105 @@ impl PassThruMsg {
         }
     }
 
-    pub fn new(
-        protocol: Protocol,
-        rx_status: RxStatus,
-        tx_flags: TxFlags,
-        timestamp: u32,
-        extra_data_index: u32,
-        data: &[u8],
-    ) -> PassThruMsg {
-        PassThruMsg::new_raw(
-            protocol,
-            rx_status,
-            tx_flags,
-            timestamp,
-            data.len() as u32,
-            extra_data_index,
-            {
-                let mut d: [u8; 4128] = [0; 4128];
-                d[..data.len()].copy_from_slice(&data);
-                d
-            },
-        )
+    pub fn new(protocol: Protocol) -> PassThruMsg {
+        PassThruMsg {
+            protocol_id: protocol as u32,
+            rx_status: 0,
+            tx_flags: 0,
+            timestamp: 0,
+            data_size: 0,
+            extra_data_index: 0,
+            data: [0; 4128],
+        }
+    }
+
+    /// Creates a new CAN message.
+    /// The data size must be less than or equal to 8 bytes.
+    pub fn new_can(id: u32, data: &[u8]) -> PassThruMsg {
+        let mut msg_data = [0_u8; 4128];
+        // Copy arbitration ID
+        msg_data[0] = ((id >> 24) & 0xFF) as u8;
+        msg_data[1] = ((id >> 16) & 0xFF) as u8;
+        msg_data[2] = ((id >> 8) & 0xFF) as u8;
+        msg_data[3] = (id & 0xFF) as u8;
+
+        // Copy the message
+        &mut msg_data[4..data.len() + 4].copy_from_slice(data);
+
+        PassThruMsg {
+            data: msg_data,
+            data_size: (data.len() + 4) as u32,
+            ..Self::new(Protocol::CAN)
+        }
+    }
+
+    /// Creates a new ISO 15765-2 (ISO-TP) message.
+    /// ISO-TP is a transport-layer protocol that uses multiple CAN messages to transmit
+    /// up to 4095 bytes per packet.
+    /// The data size must be less than or equal to 4095.
+    pub fn new_isotp(id: u32, data: &[u8]) -> PassThruMsg {
+        let mut msg_data = [0_u8; 4128];
+        // Copy arbitration ID
+        msg_data[0] = ((id >> 24) & 0xFF) as u8;
+        msg_data[1] = ((id >> 16) & 0xFF) as u8;
+        msg_data[2] = ((id >> 8) & 0xFF) as u8;
+        msg_data[3] = (id & 0xFF) as u8;
+
+        // Copy the message
+        &mut msg_data[4..data.len() + 4].copy_from_slice(data);
+
+        PassThruMsg {
+            data: msg_data,
+            data_size: (data.len() + 4) as u32,
+            ..Self::new(Protocol::ISO15765)
+        }
+    }
+
+    /// Returns the CAN ID and payload. Also use this method for reading ISO-TP messages.
+    /// Returns `None` if the protocol is not CAN or ISO15765 or if the message is too short.
+    pub fn can_message(&self) -> Option<(u32, &[u8])> {
+        if (self.protocol_id == (Protocol::CAN as u32)
+            || self.protocol_id == (Protocol::ISO15765 as u32))
+            && self.data_size >= 4
+        {
+            let id = ((self.data[0] as u32) << 24)
+                | ((self.data[1] as u32) << 16)
+                | ((self.data[2] as u32) << 8)
+                | (self.data[3] as u32);
+            Some((id, &self.data[4..self.data_size as usize]))
+        } else {
+            None
+        }
+    }
+
+    /// Alias to [`PassThruMsg::can_message`]
+    #[inline]
+    pub fn isotp_message(&self) -> Option<(u32, &[u8])> {
+        self.can_message()
+    }
+
+    /// Sets the rx status of the message
+    pub fn rx_status(mut self, rx_status: RxStatus) -> Self {
+        self.rx_status = rx_status.bits;
+        self
+    }
+
+    /// Sets the transmit flags of the message
+    pub fn tx_flags(mut self, tx_flags: TxFlags) -> Self {
+        self.tx_flags = tx_flags.bits;
+        self
+    }
+
+    /// Returns true if this is an echo of a message transmitted by
+    /// the PassThru device.
+    pub fn transmitted(&self) -> bool {
+        self.rx_status & (RxStatus::TX_MSG_TYPE).bits() != 0
+    }
+
+    /// Returns true if this message indicates the first frame of a ISO15765 packet
+    /// has been received.
+    pub fn first_frame(&self) -> bool {
+        self.rx_status & (RxStatus::ISO15765_FIRST_FRAME).bits() != 0
     }
 }
 
@@ -300,6 +400,10 @@ impl Debug for PassThruMsg {
 #[derive(Copy, Clone, Debug)]
 pub struct ChannelId(u32);
 
+/// Device ID
+#[derive(Copy, Clone, Debug)]
+pub struct DeviceId(u32);
+
 /// Period message ID
 #[derive(Copy, Clone, Debug)]
 pub struct MessageId(u32);
@@ -308,7 +412,7 @@ pub struct MessageId(u32);
 #[derive(Copy, Clone, Debug)]
 pub struct FilterId(u32);
 
-/// Represents a J2534 library
+/// A J2534 library
 pub struct Interface {
     library: Library,
 
@@ -328,17 +432,17 @@ pub struct Interface {
     c_pass_thru_ioctl: PassThruIoctlFn,
 }
 
-/// Represents a J2534 device created with [`Interface::open`]
+/// A device created with [`Interface::open`]
 pub struct Device<'a> {
     interface: &'a Interface,
-    id: u32,
+    id: DeviceId,
 }
 
-/// Represents a J2534 channel
+/// A communication channel
 pub struct Channel<'a> {
     device: &'a Device<'a>,
-    id: u32,
-    protocol_id: u32,
+    id: ChannelId,
+    protocol: Protocol,
 }
 
 impl Interface {
@@ -447,7 +551,7 @@ impl Interface {
 
         Ok(Device {
             interface: self,
-            id,
+            id: DeviceId(id),
         })
     }
 
@@ -469,7 +573,7 @@ impl Interface {
 
         Ok(Device {
             interface: self,
-            id,
+            id: DeviceId(id),
         })
     }
 
@@ -504,6 +608,7 @@ pub enum Protocol {
 }
 
 bitflags! {
+    /// Flags used when creating a communication channel
     pub struct ConnectFlags: u32 {
         const NONE = 0;
         const CAN_29_BIT_ID = 0x100;
@@ -514,6 +619,7 @@ bitflags! {
 }
 
 bitflags! {
+    /// Transmit status flags
     pub struct TxFlags: u32 {
         const NONE = 0;
         // 0 = no padding
@@ -543,6 +649,7 @@ bitflags! {
 }
 
 bitflags! {
+    /// Receive status flags
     pub struct RxStatus: u32 {
         const NONE = 0;
         // 0 = received
@@ -605,6 +712,7 @@ pub enum IoctlId {
 }
 
 #[derive(Copy, Clone)]
+/// Channel configuration parameters. Use with [`Channel::get_config`] and [`Channel::set_config`]
 pub enum ConfigId {
     DATA_RATE = 0x01,
     LOOPBACK = 0x03,
@@ -674,6 +782,7 @@ pub enum FilterType {
 }
 
 #[derive(Debug)]
+/// Information about a device's version.
 pub struct VersionInfo {
     pub firmware_version: String,
     pub dll_version: String,
@@ -691,7 +800,7 @@ impl<'a> Device<'a> {
         let mut api_version: [u8; 80] = [0; 80];
         let res = unsafe {
             (&self.interface.c_pass_thru_read_version)(
-                self.id,
+                self.id.0,
                 firmware_version.as_mut_ptr() as *mut libc::c_char,
                 dll_version.as_mut_ptr() as *mut libc::c_char,
                 api_version.as_mut_ptr() as *mut libc::c_char,
@@ -726,34 +835,12 @@ impl<'a> Device<'a> {
     /// * `voltage` - The voltage value (in millivolts) that will be applied to the specified pin
     pub fn set_programming_voltage(&self, pin_number: u32, voltage: u32) -> Result<()> {
         let res = unsafe {
-            (&self.interface.c_pass_thru_set_programming_voltage)(self.id, pin_number, voltage)
+            (&self.interface.c_pass_thru_set_programming_voltage)(self.id.0, pin_number, voltage)
         };
         if res != 0 {
             return Err(Error::from_code(res));
         }
         Ok(())
-    }
-
-    /// See [`Channel::connect`]
-    pub fn connect_raw(&self, protocol: u32, flags: u32, baudrate: u32) -> Result<Channel> {
-        let mut id: u32 = 0;
-        let res = unsafe {
-            (&self.interface.c_pass_thru_connect)(
-                self.id,
-                protocol,
-                flags,
-                baudrate,
-                &mut id as *mut libc::uint32_t,
-            )
-        };
-        if res != 0 {
-            return Err(Error::from_code(res));
-        }
-        Ok(Channel {
-            device: self,
-            id,
-            protocol_id: protocol,
-        })
     }
 
     /// Creates a channel
@@ -769,7 +856,24 @@ impl<'a> Device<'a> {
         flags: ConnectFlags,
         baudrate: u32,
     ) -> Result<Channel> {
-        self.connect_raw(protocol as u32, flags.bits(), baudrate)
+        let mut id: u32 = 0;
+        let res = unsafe {
+            (&self.interface.c_pass_thru_connect)(
+                self.id.0,
+                protocol as u32,
+                flags.bits,
+                baudrate,
+                &mut id as *mut libc::uint32_t,
+            )
+        };
+        if res != 0 {
+            return Err(Error::from_code(res));
+        }
+        Ok(Channel {
+            device: self,
+            id: ChannelId(id),
+            protocol: protocol as Protocol,
+        })
     }
 
     /// Returns the battery voltage in millivolts read from Pin 16 on the J1962 connector.
@@ -777,7 +881,7 @@ impl<'a> Device<'a> {
         let mut voltage: u32 = 0;
         unsafe {
             self.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::READ_VBATT,
                 std::ptr::null_mut::<libc::c_void>(),
                 (&mut voltage) as *mut _ as *mut libc::c_void,
@@ -791,7 +895,7 @@ impl<'a> Device<'a> {
         let mut voltage: u32 = 0;
         unsafe {
             self.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::READ_PROG_VOLTAGE,
                 std::ptr::null_mut::<libc::c_void>(),
                 (&mut voltage) as *mut _ as *mut libc::c_void,
@@ -803,7 +907,7 @@ impl<'a> Device<'a> {
 
 impl<'a> Drop for Device<'a> {
     fn drop(&mut self) {
-        unsafe { (&self.interface.c_pass_thru_close)(self.id) };
+        unsafe { (&self.interface.c_pass_thru_close)(self.id.0) };
     }
 }
 
@@ -814,19 +918,17 @@ impl<'a> Channel<'a> {
     ///
     /// * `msgs` - The array of messages to fill.
     /// * `timeout` - The amount of time in milliseconds to wait. If set to zero, reads buffered messages and returns immediately
-    pub fn read_msgs<'b>(
-        &self,
-        msgs: &'b mut [PassThruMsg],
-        timeout: u32,
-    ) -> Result<&'b [PassThruMsg]> {
-        for msg in msgs.iter_mut() {
-            msg.protocol_id = self.protocol_id;
+    ///
+    /// Returns the amount of messages read.
+    pub fn read(&self, buf: &mut [PassThruMsg], timeout: u32) -> Result<usize> {
+        for msg in buf.iter_mut() {
+            msg.protocol_id = self.protocol as u32;
         }
-        let mut num_msgs: u32 = msgs.len() as u32;
+        let mut num_msgs: u32 = buf.len() as u32;
         let res = unsafe {
             (&self.device.interface.c_pass_thru_read_msgs)(
-                self.id,
-                msgs.as_mut_ptr(),
+                self.id.0,
+                buf.as_mut_ptr(),
                 &mut num_msgs as *mut libc::uint32_t,
                 timeout,
             )
@@ -834,29 +936,30 @@ impl<'a> Channel<'a> {
         if res != 0 {
             return Err(Error::from_code(res));
         }
-        Ok(&msgs[..(num_msgs as usize)])
+        Ok(num_msgs as usize)
     }
 
     /// Reads a single message
-    pub fn read_msg(&self, timeout: u32) -> Result<PassThruMsg> {
-        let mut msg = PassThruMsg {
-            protocol_id: self.protocol_id,
-            ..Default::default()
-        };
+    pub fn read_once(&self, timeout: u32) -> Result<PassThruMsg> {
+        let mut msg = PassThruMsg::new(self.protocol);
 
         let mut num_msgs = 1 as u32;
         let res = unsafe {
             (&self.device.interface.c_pass_thru_read_msgs)(
-                self.id,
+                self.id.0,
                 &mut msg as *mut PassThruMsg,
                 &mut num_msgs as *mut libc::uint32_t,
                 timeout,
             )
         };
-        if res != 0 {
-            return Err(Error::from_code(res));
+        if num_msgs == 0 {
+            // This should never happen, but just in case...
+            Err(Error::BufferEmpty)
+        } else if res != 0 {
+            Err(Error::from_code(res))
+        } else {
+            Ok(msg)
         }
-        Ok(msg)
     }
 
     /// Writes `msgs` to the device until all messages have been written or until the timeout has been reached. Returns the amount of message written.
@@ -865,14 +968,11 @@ impl<'a> Channel<'a> {
     ///
     /// * msgs - The array of messages to send.
     /// * timeout - The amount of time in milliseconds to wait. If set to zero, queues as many messages as possible and returns immediately.
-    pub fn write_msgs(&self, msgs: &mut [PassThruMsg], timeout: u32) -> Result<usize> {
-        for msg in msgs.iter_mut() {
-            msg.protocol_id = self.protocol_id;
-        }
+    pub fn write(&self, msgs: &mut [PassThruMsg], timeout: u32) -> Result<usize> {
         let mut num_msgs: u32 = msgs.len() as u32;
         let res = unsafe {
             (&self.device.interface.c_pass_thru_write_msgs)(
-                self.id,
+                self.id.0,
                 msgs.as_mut_ptr(),
                 &mut num_msgs as *mut libc::uint32_t,
                 timeout,
@@ -889,7 +989,7 @@ impl<'a> Channel<'a> {
     ///
     /// Returns filter ID
     /// http://www.drewtech.com/support/passthru/startmsgfilter.html
-    pub fn start_msg_filter(
+    pub fn start_message_filter(
         &self,
         filter_type: FilterType,
         mask_msg: Option<&PassThruMsg>,
@@ -915,7 +1015,7 @@ impl<'a> Channel<'a> {
 
         let res = unsafe {
             (&self.device.interface.c_pass_thru_start_msg_filter)(
-                self.id,
+                self.id.0,
                 filter_type as u32,
                 mask_ptr,
                 pattern_ptr,
@@ -934,9 +1034,9 @@ impl<'a> Channel<'a> {
     /// # Arguments
     ///
     /// * `msg_id` - The id of the message returned from `Channel::start_msg_filter`
-    pub fn stop_msg_filter(&self, filter_id: FilterId) -> Result<()> {
+    pub fn stop_message_filter(&self, filter_id: FilterId) -> Result<()> {
         let res =
-            unsafe { (&self.device.interface.c_pass_thru_stop_msg_filter)(self.id, filter_id.0) };
+            unsafe { (&self.device.interface.c_pass_thru_stop_msg_filter)(self.id.0, filter_id.0) };
         if res != 0 {
             return Err(Error::from_code(res));
         }
@@ -950,11 +1050,15 @@ impl<'a> Channel<'a> {
     ///
     /// * `msg` - The message to send
     /// * `time_interval` - The time in milliseconds to wait between sending messages. The acceptable range is between 5 and 65,535 milliseconds.
-    pub fn start_periodic_msg(&self, msg: &PassThruMsg, time_interval: u32) -> Result<MessageId> {
+    pub fn start_periodic_message(
+        &self,
+        msg: &PassThruMsg,
+        time_interval: u32,
+    ) -> Result<MessageId> {
         let mut msg_id = 0;
         let res = unsafe {
             (&self.device.interface.c_pass_thru_start_periodic_msg)(
-                self.id,
+                self.id.0,
                 msg as *const PassThruMsg,
                 &mut msg_id as *mut libc::uint32_t,
                 time_interval,
@@ -971,9 +1075,9 @@ impl<'a> Channel<'a> {
     /// # Arguments
     ///
     /// * msg_id = the id of the periodic message returned from `Channel::start_periodiC_msg`
-    pub fn stop_periodic_msg(&self, msg_id: MessageId) -> Result<()> {
+    pub fn stop_periodic_message(&self, msg_id: MessageId) -> Result<()> {
         let res =
-            unsafe { (&self.device.interface.c_pass_thru_stop_periodic_msg)(self.id, msg_id.0) };
+            unsafe { (&self.device.interface.c_pass_thru_stop_periodic_msg)(self.id.0, msg_id.0) };
         if res != 0 {
             return Err(Error::from_code(res));
         }
@@ -984,7 +1088,7 @@ impl<'a> Channel<'a> {
     pub fn clear_transmit_buffer(&self) -> Result<()> {
         unsafe {
             self.device.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::CLEAR_TX_BUFFER,
                 std::ptr::null_mut::<libc::c_void>(),
                 std::ptr::null_mut::<libc::c_void>(),
@@ -997,7 +1101,7 @@ impl<'a> Channel<'a> {
     pub fn clear_periodic_messages(&self) -> Result<()> {
         unsafe {
             self.device.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::CLEAR_PERIODIC_MSGS,
                 std::ptr::null_mut::<libc::c_void>(),
                 std::ptr::null_mut::<libc::c_void>(),
@@ -1010,7 +1114,7 @@ impl<'a> Channel<'a> {
     pub fn clear_receive_buffer(&self) -> Result<()> {
         unsafe {
             self.device.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::CLEAR_RX_BUFFER,
                 std::ptr::null_mut::<libc::c_void>(),
                 std::ptr::null_mut::<libc::c_void>(),
@@ -1023,7 +1127,7 @@ impl<'a> Channel<'a> {
     pub fn clear_message_filters(&self) -> Result<()> {
         unsafe {
             self.device.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::CLEAR_MSG_FILTERS,
                 std::ptr::null_mut::<libc::c_void>(),
                 std::ptr::null_mut::<libc::c_void>(),
@@ -1034,30 +1138,38 @@ impl<'a> Channel<'a> {
 
     /// Gets a single configuration parameter.
     pub fn get_config(&self, id: ConfigId) -> Result<u32> {
-        let mut input = SConfig {
-            parameter: id,
+        let mut item = SConfig {
+            parameter: id as u32,
             value: 0,
+        };
+        let mut input = SConfigList {
+            size: 1,
+            config_ptr: &mut item as *mut SConfig,
         };
         unsafe {
             self.device.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::GET_CONFIG,
                 &mut input as *mut _ as *mut libc::c_void,
                 std::ptr::null_mut::<libc::c_void>(),
             )
         }?;
-        Ok(input.value)
+        Ok(item.value)
     }
 
     /// Sets a single configuration parameter.
     pub fn set_config(&self, id: ConfigId, value: u32) -> Result<()> {
-        let mut input = SConfig {
-            parameter: id,
+        let mut item = SConfig {
+            parameter: id as u32,
             value,
+        };
+        let mut input = SConfigList {
+            size: 1,
+            config_ptr: &mut item as *mut SConfig,
         };
         unsafe {
             self.device.interface.ioctl(
-                self.id,
+                self.id.0,
                 IoctlId::SET_CONFIG,
                 &mut input as *mut _ as *mut libc::c_void,
                 std::ptr::null_mut::<libc::c_void>(),
@@ -1069,22 +1181,23 @@ impl<'a> Channel<'a> {
 
 impl<'a> Drop for Channel<'a> {
     fn drop(&mut self) {
-        unsafe { (&self.device.interface.c_pass_thru_disconnect)(self.id) };
+        unsafe { (&self.device.interface.c_pass_thru_disconnect)(self.id.0) };
     }
 }
 
+/// Information about an installed PassThru driver
 #[derive(Debug)]
-pub struct Listing {
+pub struct Driver {
     pub name: String,
     pub vendor: String,
     pub path: String,
 }
 
 /// Returns a list of all installed PassThru drivers
-pub fn drivers() -> io::Result<Vec<Listing>> {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-
-    let passthru = match hklm.open_subkey(Path::new("SOFTWARE").join("PassThruSupport.04.04")) {
+pub fn drivers() -> io::Result<Vec<Driver>> {
+    let passthru = match RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey(Path::new("SOFTWARE").join("PassThruSupport.04.04"))
+    {
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
             return Ok(Vec::new());
         }
@@ -1100,7 +1213,7 @@ pub fn drivers() -> io::Result<Vec<Listing>> {
         let vendor: String = key.get_value("Vendor")?;
         let path: String = key.get_value("FunctionLibrary")?;
 
-        listings.push(Listing {
+        listings.push(Driver {
             name: device_name,
             vendor,
             path,
