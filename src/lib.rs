@@ -29,6 +29,7 @@
 #[macro_use]
 extern crate bitflags;
 
+use std::marker::PhantomData;
 use std::ffi;
 use std::ffi::OsStr;
 use std::fmt;
@@ -83,12 +84,12 @@ pub enum Error {
     DeviceInUse,
     #[error("invalid ioctl id")]
     InvalidIoctlId,
-    // Could not read any messages from the vehicle network
+    /// Could not read any messages from the vehicle network
     #[error("could not read messages")]
     BufferEmpty,
     #[error("transmit queue full")]
     BufferFull,
-    // Receive buffer overflowed and messages were lost
+    /// Receive buffer overflowed and messages were lost
     #[error("receive buffer overflowed")]
     BufferOverflow,
     #[error("unknown pin number or resource in use")]
@@ -398,11 +399,11 @@ impl Debug for PassThruMsg {
 
 /// Vehicle communication channel ID
 #[derive(Copy, Clone, Debug)]
-pub struct ChannelId(u32);
+struct ChannelId(u32);
 
 /// Device ID
 #[derive(Copy, Clone, Debug)]
-pub struct DeviceId(u32);
+struct DeviceId(u32);
 
 /// Periodic message ID
 #[derive(Copy, Clone, Debug)]
@@ -430,6 +431,8 @@ pub struct Interface {
     c_pass_thru_stop_periodic_msg: PassThruStopPeriodicMsgFn,
     c_pass_thru_set_programming_voltage: PassThruSetProgrammingVoltageFn,
     c_pass_thru_ioctl: PassThruIoctlFn,
+
+    _marker: PhantomData<*mut()>,
 }
 
 /// A device created with [`Interface::open`]
@@ -503,6 +506,8 @@ impl Interface {
                     .into_raw(),
                 c_pass_thru_ioctl: *c_pass_thru_ioctl.into_raw(),
                 library,
+
+                _marker: PhantomData,
             }
         };
 
