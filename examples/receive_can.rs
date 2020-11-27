@@ -1,6 +1,6 @@
 use j2534::{PassThruMsg, Protocol, RxStatus, TxFlags};
 
-fn main() -> j2534::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get a list of interfaces
     let device = match j2534::drivers()?.into_iter().next() {
         Some(device) => device,

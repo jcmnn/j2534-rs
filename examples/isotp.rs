@@ -2,7 +2,7 @@
 
 use j2534::{ConfigId, PassThruMsg, Protocol, RxStatus, TxFlags};
 
-fn main() -> j2534::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get a list of interfaces
     let device = match j2534::drivers()?.into_iter().next() {
         Some(device) => device,
@@ -50,7 +50,7 @@ fn main() -> j2534::Result<()> {
             // Message has not been fully processed yet..
             continue;
         }
-        if let Some((id, data)) = message.isotp_message() {
+        if let Some((_id, data)) = message.isotp_message() {
             println!("VIN: {}", std::str::from_utf8(&data[3..]).unwrap());
             break;
         }
