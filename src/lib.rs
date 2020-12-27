@@ -24,24 +24,23 @@
 //! }
 //! ```
 
-#![cfg(windows)]
-
 #[macro_use]
 extern crate bitflags;
 
-use std::marker::PhantomData;
 use std::ffi;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::Debug;
 use std::io;
+use std::marker::PhantomData;
 use std::path::Path;
 use std::str::Utf8Error;
 
 use bitflags::_core::fmt::Formatter;
 use libloading::{Library, Symbol};
-use winreg::enums::*;
-use winreg::RegKey;
+
+#[cfg(windows)]
+use winreg::{enums::*, RegKey};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -145,10 +144,8 @@ impl Error {
     }
 }
 
-type PassThruOpenFn = unsafe extern "stdcall" fn(
-    name: *const libc::c_void,
-    device_id: *mut u32,
-) -> i32;
+type PassThruOpenFn =
+    unsafe extern "stdcall" fn(name: *const libc::c_void, device_id: *mut u32) -> i32;
 type PassThruCloseFn = unsafe extern "stdcall" fn(device_id: u32) -> i32;
 type PassThruConnectFn = unsafe extern "stdcall" fn(
     device_id: u32,
@@ -176,8 +173,7 @@ type PassThruStartPeriodicMsgFn = unsafe extern "stdcall" fn(
     msg_id: *mut u32,
     time_interval: u32,
 ) -> i32;
-type PassThruStopPeriodicMsgFn =
-unsafe extern "stdcall" fn(channel_id: u32, msg_id: u32) -> i32;
+type PassThruStopPeriodicMsgFn = unsafe extern "stdcall" fn(channel_id: u32, msg_id: u32) -> i32;
 type PassThruStartMsgFilterFn = unsafe extern "stdcall" fn(
     channel_id: u32,
     filter_type: u32,
@@ -186,15 +182,9 @@ type PassThruStartMsgFilterFn = unsafe extern "stdcall" fn(
     flow_control_msg: *const PassThruMsg,
     filter_id: *mut u32,
 ) -> i32;
-type PassThruStopMsgFilterFn = unsafe extern "stdcall" fn(
-    channel_id: u32,
-    filter_id: u32,
-) -> i32;
-type PassThruSetProgrammingVoltageFn = unsafe extern "stdcall" fn(
-    device_id: u32,
-    pin_number: u32,
-    voltage: u32,
-) -> i32;
+type PassThruStopMsgFilterFn = unsafe extern "stdcall" fn(channel_id: u32, filter_id: u32) -> i32;
+type PassThruSetProgrammingVoltageFn =
+    unsafe extern "stdcall" fn(device_id: u32, pin_number: u32, voltage: u32) -> i32;
 type PassThruReadVersionFn = unsafe extern "stdcall" fn(
     device_id: u32,
     firmware_version: *mut libc::c_char,
@@ -202,7 +192,7 @@ type PassThruReadVersionFn = unsafe extern "stdcall" fn(
     api_version: *mut libc::c_char,
 ) -> i32;
 type PassThruGetLastErrorFn =
-unsafe extern "stdcall" fn(error_description: *mut libc::c_char) -> i32;
+    unsafe extern "stdcall" fn(error_description: *mut libc::c_char) -> i32;
 type PassThruIoctlFn = unsafe extern "stdcall" fn(
     handle_id: u32,
     ioctl_id: u32,
@@ -430,7 +420,7 @@ pub struct Interface {
     c_pass_thru_set_programming_voltage: PassThruSetProgrammingVoltageFn,
     c_pass_thru_ioctl: PassThruIoctlFn,
 
-    _marker: PhantomData<*mut()>,
+    _marker: PhantomData<*mut ()>,
 }
 
 /// A device created with [`Interface::open`]
@@ -1196,6 +1186,7 @@ pub struct Driver {
     pub path: String,
 }
 
+#[cfg(windows)]
 /// Returns a list of all installed PassThru drivers
 pub fn drivers() -> io::Result<Vec<Driver>> {
     let passthru = match RegKey::predef(HKEY_LOCAL_MACHINE)
@@ -1224,4 +1215,10 @@ pub fn drivers() -> io::Result<Vec<Driver>> {
     }
 
     Ok(listings)
+}
+
+#[cfg(not(windows))]
+/// Returns a list of all installed PassThru drivers
+pub fn drivers() -> io::Result<Vec<Driver>> {
+    Ok(Vec::new())
 }

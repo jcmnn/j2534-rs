@@ -1,6 +1,6 @@
 [package]
 name = "j2534"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Altenius <jacobjm18@gmail.com>"]
 keywords = ["cars", "tuning", "passthru"]
 categories = ["external-ffi-bindings", "hardware-support"]
@@ -22,5 +22,7 @@ default-target = "i686-pc-windows-msvc"
 libc = "0.2"
 bitflags = "1.2"
 libloading = "0.6"
-winreg = "0.7"
 thiserror = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.8"
