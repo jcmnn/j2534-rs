@@ -27,8 +27,8 @@
 #[macro_use]
 extern crate bitflags;
 
-use std::ffi;
 use std::ffi::OsStr;
+use std::ffi::{self, CStr, CString};
 use std::fmt;
 use std::fmt::Debug;
 use std::io;
@@ -39,16 +39,13 @@ use std::str::Utf8Error;
 use bitflags::_core::fmt::Formatter;
 use libloading::{Library, Symbol};
 
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 #[cfg(windows)]
 use winreg::{enums::*, RegKey};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error(transparent)]
-    Utf8Error(#[from] Utf8Error),
-    #[error(transparent)]
-    Io(#[from] io::Error),
-
     #[error("success")]
     NoError,
     #[error("option not supported')")]
@@ -109,6 +106,16 @@ pub enum Error {
     Unknown(i32),
 }
 
+impl FromPrimitive for Error {
+    fn from_i64(n: i64) -> Option<Self> {
+        todo!()
+    }
+
+    fn from_u64(n: u64) -> Option<Self> {
+        todo!()
+    }
+}
+
 impl Error {
     pub fn from_code(code: i32) -> Error {
         match code {
@@ -140,6 +147,39 @@ impl Error {
             0x19 => Error::InvalidBaudrate,
             0x1A => Error::InvalidDeviceId,
             other => Error::Unknown(other),
+        }
+    }
+
+    pub fn as_code(&self) -> i32 {
+        match *self {
+            Error::NoError => 0x00,
+            Error::NotSupported => 0x01,
+            Error::InvalidChannelId => 0x02,
+            Error::InvalidProtocolId => 0x03,
+            Error::NullParameter => 0x04,
+            Error::InvalidIoctlValue => 0x05,
+            Error::InvalidFlags => 0x06,
+            Error::Failed => 0x07,
+            Error::DeviceNotConnected => 0x08,
+            Error::Timeout => 0x09,
+            Error::InvalidMessage => 0x0A,
+            Error::InvalidTimeInterval => 0x0B,
+            Error::ExceededLimit => 0x0C,
+            Error::InvalidMessageId => 0x0D,
+            Error::DeviceInUse => 0x0E,
+            Error::InvalidIoctlId => 0x0F,
+            Error::BufferEmpty => 0x10,
+            Error::BufferFull => 0x11,
+            Error::BufferOverflow => 0x12,
+            Error::PinInvalid => 0x13,
+            Error::ChannelInUse => 0x14,
+            Error::MessageProtocolId => 0x15,
+            Error::InvalidFilterId => 0x16,
+            Error::NoFlowControl => 0x17,
+            Error::NotUnique => 0x18,
+            Error::InvalidBaudrate => 0x19,
+            Error::InvalidDeviceId => 0x1A,
+            Error::Unknown(n) => n,
         }
     }
 }
@@ -372,16 +412,14 @@ impl Default for PassThruMsg {
 
 impl Debug for PassThruMsg {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        unsafe {
-            f.debug_struct("PassThruMsg")
-                .field("protocol_id", &self.protocol_id)
-                .field("rx_status", &self.rx_status)
-                .field("tx_flags", &self.tx_flags)
-                .field("timestamp", &self.timestamp)
-                .field("extra_data_index", &self.extra_data_index)
-                .field("data", &&self.data[..self.data_size as usize])
-                .finish()
-        }
+        f.debug_struct("PassThruMsg")
+            .field("protocol_id", &self.protocol_id)
+            .field("rx_status", &self.rx_status)
+            .field("tx_flags", &self.tx_flags)
+            .field("timestamp", &self.timestamp)
+            .field("extra_data_index", &self.extra_data_index)
+            .field("data", &&self.data[..self.data_size as usize])
+            .finish()
     }
 }
 
@@ -505,7 +543,7 @@ impl Interface {
     }
 
     /// Returns a text description of the most recent error
-    pub fn get_last_error(&self) -> Result<String, Error> {
+    pub fn get_last_error(&self) -> Result<CString, Error> {
         let mut error: [u8; 80] = [0; 80];
         let res =
             unsafe { (&self.c_pass_thru_get_last_error)(error.as_mut_ptr() as *mut libc::c_char) };
@@ -513,11 +551,8 @@ impl Interface {
             return Err(Error::from_code(res));
         }
 
-        unsafe {
-            Ok(String::from(
-                ffi::CStr::from_ptr(error.as_mut_ptr() as *mut libc::c_char).to_str()?,
-            ))
-        }
+        let c_str = unsafe { CStr::from_ptr(error.as_mut_ptr() as *mut libc::c_char) };
+        Ok(c_str.to_owned())
     }
 
     /// Creates a `Device` from the PassThru interface connected to the given port
@@ -586,7 +621,7 @@ impl Interface {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromPrimitive, ToPrimitive)]
 pub enum Protocol {
     J1850VPW = 1,
     J1850PWM = 2,
@@ -763,7 +798,7 @@ pub enum ConfigId {
     INPUT_RANGE_HIGH = 0x8027,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromPrimitive, ToPrimitive)]
 pub enum FilterType {
     /// Allows matching messages into the receive queue. This filter type is only valid on non-ISO 15765 channels
     Pass = 1,
@@ -777,9 +812,9 @@ pub enum FilterType {
 #[derive(Debug)]
 /// Information about a device's version.
 pub struct VersionInfo {
-    pub firmware_version: String,
-    pub dll_version: String,
-    pub api_version: String,
+    pub firmware_version: CString,
+    pub dll_version: CString,
+    pub api_version: CString,
 }
 
 pub const SHORT_TO_GROUND: u32 = 0xFFFFFFFE;
@@ -804,16 +839,12 @@ impl<'a> Device<'a> {
         }
         unsafe {
             Ok(VersionInfo {
-                firmware_version: String::from(
-                    ffi::CStr::from_ptr(firmware_version.as_mut_ptr() as *mut libc::c_char)
-                        .to_str()?,
-                ),
-                api_version: String::from(
-                    ffi::CStr::from_ptr(api_version.as_mut_ptr() as *mut libc::c_char).to_str()?,
-                ),
-                dll_version: String::from(
-                    ffi::CStr::from_ptr(dll_version.as_mut_ptr() as *mut libc::c_char).to_str()?,
-                ),
+                firmware_version:
+                    CStr::from_ptr(firmware_version.as_mut_ptr() as *mut libc::c_char).to_owned(),
+                api_version: CStr::from_ptr(api_version.as_mut_ptr() as *mut libc::c_char)
+                    .to_owned(),
+                dll_version: CStr::from_ptr(dll_version.as_mut_ptr() as *mut libc::c_char)
+                    .to_owned(),
             })
         }
     }
