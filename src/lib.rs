@@ -184,37 +184,37 @@ impl Error {
     }
 }
 
-type PassThruOpenFn =
+pub type PassThruOpenFn =
     unsafe extern "stdcall" fn(name: *const libc::c_void, device_id: *mut u32) -> i32;
-type PassThruCloseFn = unsafe extern "stdcall" fn(device_id: u32) -> i32;
-type PassThruConnectFn = unsafe extern "stdcall" fn(
+pub type PassThruCloseFn = unsafe extern "stdcall" fn(device_id: u32) -> i32;
+pub type PassThruConnectFn = unsafe extern "stdcall" fn(
     device_id: u32,
     protocol_id: u32,
     flags: u32,
     baudrate: u32,
     channel_id: *mut u32,
 ) -> i32;
-type PassThruDisconnectFn = unsafe extern "stdcall" fn(channel_id: u32) -> i32;
-type PassThruReadMsgsFn = unsafe extern "stdcall" fn(
+pub type PassThruDisconnectFn = unsafe extern "stdcall" fn(channel_id: u32) -> i32;
+pub type PassThruReadMsgsFn = unsafe extern "stdcall" fn(
     channel_id: u32,
     msgs: *mut PassThruMsg,
     num_msgs: *mut u32,
     timeout: u32,
 ) -> i32;
-type PassThruWriteMsgsFn = unsafe extern "stdcall" fn(
+pub type PassThruWriteMsgsFn = unsafe extern "stdcall" fn(
     channel_id: u32,
     msgs: *mut PassThruMsg,
     num_msgs: *mut u32,
     timeout: u32,
 ) -> i32;
-type PassThruStartPeriodicMsgFn = unsafe extern "stdcall" fn(
+pub type PassThruStartPeriodicMsgFn = unsafe extern "stdcall" fn(
     channel_id: u32,
     msg: *const PassThruMsg,
     msg_id: *mut u32,
     time_interval: u32,
 ) -> i32;
-type PassThruStopPeriodicMsgFn = unsafe extern "stdcall" fn(channel_id: u32, msg_id: u32) -> i32;
-type PassThruStartMsgFilterFn = unsafe extern "stdcall" fn(
+pub type PassThruStopPeriodicMsgFn = unsafe extern "stdcall" fn(channel_id: u32, msg_id: u32) -> i32;
+pub type PassThruStartMsgFilterFn = unsafe extern "stdcall" fn(
     channel_id: u32,
     filter_type: u32,
     msg_mask: *const PassThruMsg,
@@ -222,18 +222,18 @@ type PassThruStartMsgFilterFn = unsafe extern "stdcall" fn(
     flow_control_msg: *const PassThruMsg,
     filter_id: *mut u32,
 ) -> i32;
-type PassThruStopMsgFilterFn = unsafe extern "stdcall" fn(channel_id: u32, filter_id: u32) -> i32;
-type PassThruSetProgrammingVoltageFn =
+pub type PassThruStopMsgFilterFn = unsafe extern "stdcall" fn(channel_id: u32, filter_id: u32) -> i32;
+pub type PassThruSetProgrammingVoltageFn =
     unsafe extern "stdcall" fn(device_id: u32, pin_number: u32, voltage: u32) -> i32;
-type PassThruReadVersionFn = unsafe extern "stdcall" fn(
+pub type PassThruReadVersionFn = unsafe extern "stdcall" fn(
     device_id: u32,
     firmware_version: *mut libc::c_char,
     dll_version: *mut libc::c_char,
     api_version: *mut libc::c_char,
 ) -> i32;
-type PassThruGetLastErrorFn =
+pub type PassThruGetLastErrorFn =
     unsafe extern "stdcall" fn(error_description: *mut libc::c_char) -> i32;
-type PassThruIoctlFn = unsafe extern "stdcall" fn(
+pub type PassThruIoctlFn = unsafe extern "stdcall" fn(
     handle_id: u32,
     ioctl_id: u32,
     input: *mut libc::c_void,

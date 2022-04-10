@@ -1,6 +1,6 @@
 [package]
 name = "j2534"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Altenius <jacobjm18@gmail.com>"]
 keywords = ["cars", "tuning", "passthru"]
 categories = ["external-ffi-bindings", "hardware-support"]
