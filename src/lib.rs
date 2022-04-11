@@ -798,7 +798,7 @@ pub enum ConfigId {
     INPUT_RANGE_HIGH = 0x8027,
 }
 
-#[derive(Copy, Clone, FromPrimitive, ToPrimitive)]
+#[derive(Copy, Clone, Debug, FromPrimitive, ToPrimitive)]
 pub enum FilterType {
     /// Allows matching messages into the receive queue. This filter type is only valid on non-ISO 15765 channels
     Pass = 1,
